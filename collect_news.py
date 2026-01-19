@@ -106,7 +106,32 @@ class RSSFeedCollector:
             print(f"Error extracting from {source_name}. Error code {e}")
 
         return news_articles
+    
+    # collect from ALL RSS Feeds
+
+    def collect_from_all_feeds(self, days_backwards):
+
+        # each collect_from_feed returns a list of NewsArticle Objects from a feed, we want to extend all_articles with these lists
+
+        all_articles = []
+        cutoff_date = datetime.now() - timedelta(days=days_backwards)           # stop collecting historical articles after X days
+        
+
+        for source_name, feed_url in self.feeds.items():            # returns format example   source_name = ft_market, feed_url = url 
+
+            #run per url
+            specific_feed_articles = self.collect_from_feed(source_name, feed_url)
+
+            #filter the articles by ensuring their dates >= cutoff_date
+            filtered_articles = [a for a in specific_feed_articles if a.published_date >= cutoff_date]
+
+            all_articles.extend(filtered_articles)
+            time.sleep(1) 
+
+        #Return list of news article objects from ALL RSS_FEEDS      
+        return all_articles 
             
+
 
 
 
@@ -117,11 +142,19 @@ if __name__ == "__main__":
 
     test_feeds = {'ft_markets' : 'https://www.ft.com/rss/markets'}
 
-    collector = RSSFeedCollector(test_feeds)
-    # test run - should return a list of newsarticle objects to dump into json
+    collector = RSSFeedCollector()  
 
-    
-    articles = collector.collect_from_feed(source_name = 'ft_markets',feed_url ='https://www.ft.com/rss/markets')
-    with open('test.json', 'w') as f:
-        json.dump([asdict(a) for a in articles], f, default= str, indent = 4)
-    
+    all_articles = collector.collect_from_all_feeds(days_backwards=1)       
+
+    with open('test2.json','w') as f:
+        json.dump([asdict(a) for a in all_articles], f, default = str, indent = 2 )
+
+        # test run - should return a list of newsarticle objects to dump into json
+
+        
+            # articles = collector.collect_from_feed(source_name = 'ft_markets',feed_url ='https://www.ft.com/rss/markets')
+            # with open('test.json', 'w') as f:
+            #     json.dump([asdict(a) for a in articles], f, default= str, indent = 4)
+        
+    # Test run of collect_from_all_feeds
+
