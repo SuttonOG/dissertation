@@ -19,7 +19,7 @@ class QueryPack:
     exchange : str
     business_summary : str
 
-    name_aliases = List[str]                    # to be used for searching for e.g APPL/ Apple/ Apple Inc
+    name_aliases : List[str]                    # to be used for searching for e.g APPL/ Apple/ Apple Inc
     # disambiguators : str                        # used if a name is ambigous, e.g Apple 
     # news_API_querys : List[str]
 
@@ -47,7 +47,7 @@ class QueryPack:
         },
     }   
 
-    # will use to sort queries for these keywords etcs
+    # will use to sort main_terms for these keywords etcs
 _financial_words = [
         "stock", "shares", "earnings", "forecast", "revenue", "profit", "NASDAQ", "NYSE", "SEC", "IPO", "dividend", "buyback", "acquisition"
     ]   
@@ -58,24 +58,28 @@ _company_endings = [
     ]
     
 
-def remove_comapany_endings(name : str) -> str:
+def remove_company_endings(name : str) -> str:
 
     if not name:
         return ""
         
         # else remove the company ending, e.g Apple Inc. to Apple
 
-    total = re.split(r"\s+", name.strip())
+    words = re.split(r"\s+", name.strip())
     cleaned = []
 
-    for part in total:
-        part_normal = part.strip(",".lower())
+    for part in words:
+        part_normal = part.strip(",").lower()
         if part_normal in _company_endings:
             continue
         cleaned.append(part.strip(","))
 
+    return " ".join(cleaned) if cleaned else name
 
-    #Build a dict of information/build a pack to qwuery using yfinance ticker info
+
+
+#Build a dict of information/build a pack to qwuery using yfinance ticker info
+
 def collect_from_yf(ticker: str)  -> Optional[Dict]:
     
     #builds a querypack from yfinance ticker
@@ -87,12 +91,12 @@ def collect_from_yf(ticker: str)  -> Optional[Dict]:
     company_name = ticker_info.get("longName") or ticker_info.get("shortName") or ""
     quote_type = ticker_info.get("quoteType") or ""
 
-    if not company_name and not company_name:
+    if not company_name and not quote_type:
         raise ValueError(f"Was unable to get ticker information from yfinance for {ticker}")
     
     extracted_short_name = ticker_info.get("shortName") or company_name
     # remove company endings
-    short_name = remove_comapany_endings(extracted_short_name)
+    short_name = remove_company_endings(extracted_short_name)
 
     #extract rest of the ticker info for query pack
     sector = ticker_info.get("sector","")
@@ -103,14 +107,15 @@ def collect_from_yf(ticker: str)  -> Optional[Dict]:
 
     # ADD Aliases for a company e.g AAPL - Apple Inc, Apple
 
-    aliases : Set[str] = {ticker}
+    aliases : Set[str] = {ticker.upper()}
     if company_name:
         aliases.add(company_name)
-    if short_name:
+        aliases.add(company_name.replace(".",""))
+    if short_name and short_name != company_name:
         aliases.add(short_name)
     # also add without the dot e.g Apple Inc
-    if company_name:
-        aliases.add(company_name.replace(".",""))           # remove dot 
+          # remove dot 
+    sorted_aliases = tuple(sorted(aliases))
 
     
     return QueryPack(
@@ -122,41 +127,95 @@ def collect_from_yf(ticker: str)  -> Optional[Dict]:
         country = country,
         exchange = exchange,
         business_summary=summary, 
-        company_name = company_name
-        # name_aliases = sorted(aliases)
+        company_name = company_name,
+        name_aliases = sorted_aliases
     )
 
     
-        # if not, its worked, continue building the query pack
-
-    #         ticker : str
-    # quote_type : str                # quote type = ETF, Crypto, equity etc
-    # company_name : str
-    # short_name : str
-    # sector : str
-    # industry : str
-    # country : str
-    # exchange : str
-    # business_summary : str
-
-    # name_aliases = List[str]                    # to be used for searching for e.g APPL/ Apple/ Apple Inc
-    # disambiguators : str                        # used if a name is ambigous, e.g Apple 
-    # news_API_querys : List[str]
 
 
+def build_query_from_pack(query_pack: Dict[str,any]) -> str:
+    # buiild a basic query from the query pack for more specific article extraction
+    
+    ticker = (query_pack.get("ticker") or "").strip()
+    company = (query_pack.get("company_name") or "").strip()
+    short_name = (query_pack.get("short_name") or "").strip()
+    industry = (query_pack.get("industry") or "").strip()
+    sector = (query_pack.get("sector") or "").strip()
 
-            #format of a pack to build
+    # OR logic for querying
+    main_terms = []
+    if company:
+        main_terms.append(f"\"{company}\"")
+    if short_name and short_name.lower() != company.lower():            # if short name different to company name also add
+        main_terms.append(f"\"{short_name}\"")
+    if ticker:
+        main_terms.append(ticker)
+    
+    # if common ticker and creates noise, add additional info 
+    secondary_terms = []
+    if industry:
+        secondary_terms.append(f"\"{industry}\"")
+    if sector:
+        secondary_terms.append(f"\"{sector}\"")
+
+    # Query format = (company OR short_name OR ticker) AND (sector OR industry)
+    if secondary_terms and main_terms:
+        return f"({' OR '.join(main_terms)}) AND ({' OR '.join(secondary_terms)})"
+    if main_terms:
+        return " OR ".join(main_terms)
+
+    # if pack hasnt extracted sufficient information - FALLBACk
+
+    return company or ticker or ""
 
 
-    # @classmethod
-    # def get_pack(cls, ticker : str) -> Dict[][]:
+def build_query_for_gdelt(query_pack : Dict[str,any]) -> str:
+    
+    #Extract info from query pack to build GDELT query
+    ticker = (query_pack.get("ticker") or "").strip().upper()
+    company = (query_pack.get("company_name") or "").strip()
+    short_name = (query_pack.get("short_name") or "").strip()
+    aliases = query_pack.get("name_aliases", [])
 
+    search_terms = set()
 
+    if ticker:
+        search_terms.add(ticker)
+    if company:
+        search_terms.add(f'"{company}"')
+    if short_name and short_name.lower() != company.lower():
+        search_terms.add(f'"{short_name}"')
+
+    # add aliases also
+    for alias in aliases:
+        alias = alias.strip()  # remove whitespace
+        if alias and alias.upper() != ticker:
+            if ' ' in alias:
+                search_terms.add(f'"{alias}"')
+            else:
+                search_terms.add(alias)
+    
+    if not search_terms:
+        return ticker or company or ""
+    
+    return f"({' OR '.join(sorted(search_terms))})"
 
 
 if __name__ == "__main__":
+
+    # test for gdelt query building
     test_pack = collect_from_yf("AAPL")
     print(asdict(test_pack))
+
+    pack_asdict = asdict(test_pack)
+    query = build_query_from_pack(pack_asdict)
+
+    print(f"Query generated: {query}")
+
+
+    gdelt_query = build_query_for_gdelt(pack_asdict)
+    print(f"\nGDELT Query: {gdelt_query}")
 
 
 
