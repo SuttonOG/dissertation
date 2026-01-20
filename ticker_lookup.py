@@ -1,5 +1,6 @@
-import yfinance as yf                           # used here to get information for a ticker, e.g APPL, to then be used later to extarct 
 from __future__ import annotations
+import yfinance as yf                           # used here to get information for a ticker, e.g APPL, to then be used later to extarct 
+
 import re
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Optional, Set
@@ -19,8 +20,8 @@ class QueryPack:
     business_summary : str
 
     name_aliases = List[str]                    # to be used for searching for e.g APPL/ Apple/ Apple Inc
-    disambiguators : str                        # used if a name is ambigous, e.g Apple 
-    news_API_querys : List[str]
+    # disambiguators : str                        # used if a name is ambigous, e.g Apple 
+    # news_API_querys : List[str]
 
     # to use if its a common stock, can be added to later - allows more detail than yfinance ticker extract
     Common_Stocks = {
@@ -75,7 +76,7 @@ def remove_comapany_endings(name : str) -> str:
 
 
     #Build a dict of information/build a pack to qwuery using yfinance ticker info
-def collect_from_yf(cls, ticker: str)  -> Optional[Dict]:
+def collect_from_yf(ticker: str)  -> Optional[Dict]:
     
     #builds a querypack from yfinance ticker
     extracted_ticker = yf.Ticker(ticker)
@@ -120,8 +121,9 @@ def collect_from_yf(cls, ticker: str)  -> Optional[Dict]:
         industry=industry,
         country = country,
         exchange = exchange,
-        summary = summary, 
-        aliases = sorted(aliases)
+        business_summary=summary, 
+        company_name = company_name
+        # name_aliases = sorted(aliases)
     )
 
     
@@ -146,12 +148,15 @@ def collect_from_yf(cls, ticker: str)  -> Optional[Dict]:
             #format of a pack to build
 
 
-    @classmethod
-    def get_pack(cls, ticker : str) -> Dict[][]:
+    # @classmethod
+    # def get_pack(cls, ticker : str) -> Dict[][]:
 
 
 
 
+if __name__ == "__main__":
+    test_pack = collect_from_yf("AAPL")
+    print(asdict(test_pack))
 
 
 
