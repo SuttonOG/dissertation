@@ -2,11 +2,11 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union,Any
 import time
 import re
 import urllib.parse
-
+import json
 from rss_collector import NewsArticle
 from ticker_lookup import QueryPack, collect_from_yf, build_query_from_pack
 import requests
@@ -21,7 +21,7 @@ class GDELTCollector:
 
     GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 
-    MAX_RECORDS = 250                   # GDELT only allows a maximum of 250 records
+    MAX_RECORDS = 250                   # GDELT only allows a maximum of 250 records, can iterate requests for more i guess
 
     TIMEOUT = 30                        # DEFault request timeout allowed
 
@@ -65,11 +65,11 @@ class GDELTCollector:
         
                 
 
-    def format_time_for_gdelt(dt : datetime) -> datetime:
+    def format_time_for_gdelt(self, dt : datetime) -> datetime:
         return dt.strftime('%Y%m%d%H%M%S')
     
 
-    def build_query_for_gdelt(query_pack : Dict[str,any]) -> str:
+    def build_query_for_gdelt(self,query_pack : Dict[str,Any]) -> str:
     #Extract info from query pack to build GDELT query
         ticker = (query_pack.get("ticker") or "").strip().upper()
         company = (query_pack.get("company_name") or "").strip()
@@ -97,7 +97,15 @@ class GDELTCollector:
         if not search_terms:
             return ticker or company or ""
         
-        return f"({' OR '.join(sorted(search_terms))})"
+        # used to filter out rubbish news articles - for example gaming PC's for nvidia - can later build
+        financial_terms = [
+            "stock","shares","earnings","revenue","guidance","forecast","results","shareholders","profit","profits","all time high","ATH","bullish","bearish","investors"
+        ]
+        
+        core_query = " OR ".join(search_terms)
+        context_query = " OR ".join(financial_terms)
+        
+        return f"(({core_query}) AND ({context_query}))"
     
     # extracts articles after the gdelt query pack has been made
     def extract_articles(self, query: str, timespan: str = None, start_datetime: datetime = None, 
@@ -123,7 +131,7 @@ class GDELTCollector:
             if source_country:
                 combined_query += f" sourcecountry:{source_country}"            # add specific country if desired
             if source_lang:
-                combined_query += f" sourcelang:{source_country}"               # add specific language if desired
+                combined_query += f" sourcelang:{source_lang}"               # add specific language if desired
             if domain:
                 combined_query += f" domain:{domain}"                           # add domain
 
@@ -149,7 +157,7 @@ class GDELTCollector:
             try:
                 print(f"\n Beginning GDELT Query for {combined_query}")
                 response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)        # url, parameters, 1ms timeout 
-                response = response.raise_for_status()
+                response.raise_for_status()
                 
                 response_data = response.json()                         # convert to json for extracting articles
 
@@ -192,10 +200,9 @@ class GDELTCollector:
             # will add fallback later to search normally
 
         # now we have query pack, search for articles using it
-        gdelt_query = self.build_query_for_gdelt(query_pack)
+        gdelt_query = self.build_query_for_gdelt(asdict(query_pack))
 
         return self.extract_articles(
-                                    self,
                                     query = gdelt_query,
                                     max_records=max_records,
                                     source_lang = source_language,
@@ -204,13 +211,21 @@ class GDELTCollector:
     
     
     
-
-
-
-
+# used only for testing purposes
+def _json_default(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(...)
 
 
 
 if __name__ == "__main__":
 
     # here for testing purposes
+
+    gdelt_collector = GDELTCollector()
+    articles = gdelt_collector.extract_using_ticker('NVDA', max_records=50)
+
+    with open('gdelt_test','w') as f:
+        json.dump([asdict(a) for a in articles], f, indent=2,default=_json_default)
+        
