@@ -69,7 +69,7 @@ class GDELTCollector:
         return dt.strftime('%Y%m%d%H%M%S')
     
 
-    def build_query_for_gdelt(self,query_pack : Dict[str,Any]) -> str:
+    def build_query_for_gdelt(self,query_pack : Dict[str,Any], include_financial_terms: bool = True) -> str:
     #Extract info from query pack to build GDELT query
         ticker = (query_pack.get("ticker") or "").strip().upper()
         company = (query_pack.get("company_name") or "").strip()
@@ -97,15 +97,19 @@ class GDELTCollector:
         if not search_terms:
             return ticker or company or ""
         
+        core_query = " OR ".join(sorted(search_terms))
+
         # used to filter out rubbish news articles - for example gaming PC's for nvidia - can later build
-        financial_terms = [
-            "stock","shares","earnings","revenue","guidance","forecast","results","shareholders","profit","profits","all time high","ATH","bullish","bearish","investors"
-        ]
-        
-        core_query = " OR ".join(search_terms)
-        context_query = " OR ".join(financial_terms)
-        
-        return f"(({core_query}) AND ({context_query}))"
+        if include_financial_terms:
+            financial_terms = [
+                    "stock", "shares", "earnings", "revenue", "market",
+                    "investor", "trading", "quarter", "CEO", "profit"
+                ]
+            context_query = " OR ".join(financial_terms)
+            return f"({core_query}) ({context_query})"
+        else:
+            return f"({core_query})"
+
     
     # extracts articles after the gdelt query pack has been made
     def extract_articles(self, query: str, timespan: str = None, start_datetime: datetime = None, 
@@ -151,6 +155,8 @@ class GDELTCollector:
             elif timespan:
                 # if timespan given, just pass it
                 parameters['timespan'] = timespan
+            else:
+                parameters['timespan'] = '7d'  # added default timespan
 
             extracted_articles = []
 
@@ -159,6 +165,17 @@ class GDELTCollector:
                 response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)        # url, parameters, 1ms timeout 
                 response.raise_for_status()
                 
+                # error handling - check for empty response
+                response_text = response.text.strip()
+                if not response_text:
+                    print("GDELT returned 0 articles/ no articles found")
+                    return []           
+
+                # error handling - check if response is actually JSON
+                if not response_text.startswith('{'):
+                    print("GDELT didnt return a JSON response")
+                    return []               # stop execution if non-json response
+
                 response_data = response.json()                         # convert to json for extracting articles
 
                 # GDELT returns articles in ['articles'] key
@@ -179,8 +196,12 @@ class GDELTCollector:
                             print(f"Error extracting articles. Error code : {e}")
             except requests.exceptions.Timeout:
                 print(f"The GDELT Request timed out")
-            except requests.exceptions.RequestException as e:                   # exception if the request failed
-                print(f"Failed to request {self.GDELT_URL}")
+            except requests.exceptions.HTTPError as e:
+                status_code = e.response.status_code if e.response else "unknown"
+                body = e.response.text if e.response else ""
+                print(f"HTTP Error {status_code} when using GDELT")
+                print(f"Response body: ")
+                print(body[:1000])
             except ValueError as e:
                 print(f"Error in parsing request response : {e}")
             
@@ -202,11 +223,13 @@ class GDELTCollector:
         # now we have query pack, search for articles using it
         gdelt_query = self.build_query_for_gdelt(asdict(query_pack))
 
+        time_span = f'{days_back}d'
         return self.extract_articles(
                                     query = gdelt_query,
                                     max_records=max_records,
                                     source_lang = source_language,
                                     sort = sort,
+                                    timespan = time_span
                                     )
     
     
