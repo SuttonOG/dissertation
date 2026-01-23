@@ -27,7 +27,7 @@ class GDELTCollector:
 
     REQUEST_DELAY = 1.0                 # TIME BETWEEN requests, limits API intensity
 
-
+    MULTIPLE_DAYS_REQUEST_DELAY = 6.0     # gdelt API recommends at least 5 seconds inbetween API calls to rate limit
 
     def __init__(self, timeout : int = 30):
         
@@ -121,11 +121,11 @@ class GDELTCollector:
             # timespan: Time range like "1d", "1w", "3months"
             # start_datetime: Precise start time (alternative to timespan)
             # end_datetime: Precise end time (alternative to timespan)
-            # max_records: Maximum articles to return (up to 250)
+            # max_records: max articles to return (up to 250)
             # sort: Sort order - 'datedesc', 'dateasc', 'tonedesc', 'toneasc', 'hybridrel'
-            # source_lang: Filter by source language (e.g., 'english', 'spanish')
-            # source_country: Filter by source country (e.g., 'US', 'UK')
-            # domain: Filter by domain (e.g., 'reuters.com')
+            # source_lang: filter by source language (e.g., 'english', 'spanish')
+            # source_country: filter by source country (e.g., 'US', 'UK')
+            # domain: filter by domain (e.g., 'reuters.com')
             self.restrict_rate_limit()
 
             #build full query
@@ -232,23 +232,137 @@ class GDELTCollector:
                                     timespan = time_span
                                     )
     
+
+    # method for extracting multiple days of articles
+    def extract_articles_multiple_days(self,
+                                       query : str,
+                                       days_backwards : int = 30,               # set to do 1 month of historical data by default
+                                       max_records_per_day: int = 50,
+                                       delay_between_days: float = 6.0,
+                                       sort : str = 'datedesc',
+                                       source_lang : str = 'english',
+                                       source_country : str = None,
+                                       domain : str = None,
+                                       ) -> List[NewsArticle]:
+        
+    # extract articles for multiple days by making a seperate API call for each day
+
+        all_articles = [] 
+        print(f"Benginning article extraction for {days_backwards} days of data.")
+        print(f"Delay between requests: {delay_between_days}")
+
+
+        for day_offset in range(days_backwards):
+            print(f"Benginning article extraction for {days_backwards} days of data.")
+            day_start = datetime.now().replace(hour = 0, minute=0,second=0,microsecond=0) - timedelta(days = day_offset)        # set start day to today midnight, then yesterday midnght etc until days_offset is 30 or days_backwards
+            day_end = day_start.replace(hour = 23, minute=59, second=59)
+
+            #format date for display
+            date_string = day_start.strftime('%Y-%m-%d')
+            print(f"\n Extracting for day {day_offset + 1}/{days_backwards}: {date_string}")
+
+            # extract the articles for this specific day
+            daily_articles = self.extract_articles(
+                query=query,
+                start_datetime=day_start,
+                end_datetime=day_end,
+                max_records=max_records_per_day,
+                sort=sort,
+                source_lang=source_lang,
+                source_country=source_country,
+                domain=domain
+            )
+
+            # after extracting 
+            print(f"Number of articles for {date_string}: {len(daily_articles)}")
+            #extend total articles with new articles
+            all_articles.extend(daily_articles)
+
+            # delay between requests as long as it isnt the last iteration
+            if day_offset < days_backwards - 1:                 # add sleep unless its last iteration
+
+                print(f"Waiting {delay_between_days} seconds before next call...")
+                time.sleep(delay_between_days)              # 6 second delay for API rate limiting
+
+
+        # after loop, return all articles
+
+        print(f"\nCompleted Extraction of {days_backwards} days worth of articles. Total articles extracted: {len(all_articles)}")
+
+        # return combined list of articles
+        return all_articles                 # returns a list of news article objects
+
+
+
+    def extract_multiple_days_using_ticker(
+        self,
+        ticker: str,
+        days_backwards: int = 30,
+        max_records_per_day: int = 50,
+        delay_between_days: float = 6.0,
+        source_language: str = 'english',
+        sort: str = 'datedesc'
+    ) -> List[NewsArticle]:
+        
+        try:
+            # buiild queyry pack for ticker
+            query_pack = collect_from_yf(ticker)
+            print(f"Query pack built for {ticker}: {query_pack.company_name}")
+        except Exception as e:
+            print(f"Unable to build query for {ticker}, error: {e}")
+            return []
+    
+    # build gdelt query from pack
+        gdelt_query = self.build_query_for_gdelt(asdict(query_pack))
+    
+    # Use multi-day extraction - pass to multi-day extract method
+        return self.extract_articles_multiple_days(
+            query=gdelt_query,
+            days_backwards=days_backwards,
+            max_records_per_day=max_records_per_day,
+            delay_between_days=delay_between_days,
+            sort=sort,
+            source_lang=source_language
+        )
+    
+            
+
+
+
+
+        
     
     
 # used only for testing purposes
 def _json_default(obj):
     if isinstance(obj, datetime):
-        return obj.isoformat()
+        return obj.isoformat()      # json doesnt allow certain date formats so need to convert
     raise TypeError(...)
 
 
 
 if __name__ == "__main__":
 
-    # here for testing purposes
-
+    # Test of multi-day extraction 
     gdelt_collector = GDELTCollector()
-    articles = gdelt_collector.extract_using_ticker('NVDA', max_records=50)
 
-    with open('gdelt_test','w') as f:
-        json.dump([asdict(a) for a in articles], f, indent=2,default=_json_default)
-        
+    # extract 7 days of articles
+    seven_day_articles = gdelt_collector.extract_multiple_days_using_ticker(ticker = 'NVDA', days_backwards=7, max_records_per_day=50, delay_between_days=6.0)
+
+
+    if seven_day_articles:
+        dates = [a.published_date.date() for a in seven_day_articles]
+        date_counts = pd.Series(dates).value_counts().sort_index()
+
+        print(f"=" * 50)
+        print(f" Total articles from 7 days : {len(seven_day_articles)}")
+
+        for date, count in date_counts.items():
+            print(f" {date}: {count} articles")
+
+    # save to file for checking
+    with open('multi_day_test.json','w') as f:
+        json.dump([asdict(a) for a in seven_day_articles],f, indent = 2, default=_json_default)
+
+
+
