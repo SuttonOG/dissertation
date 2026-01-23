@@ -10,6 +10,7 @@ import json
 from rss_collector import NewsArticle
 from ticker_lookup import QueryPack, collect_from_yf, build_query_from_pack
 import requests
+from article_to_dataframe import convert_articles_to_dataframe
 # this will be how articles are extracted using GDELT
 
 
@@ -347,22 +348,24 @@ if __name__ == "__main__":
     gdelt_collector = GDELTCollector()
 
     # extract 7 days of articles
-    seven_day_articles = gdelt_collector.extract_multiple_days_using_ticker(ticker = 'NVDA', days_backwards=7, max_records_per_day=50, delay_between_days=6.0)
+    seven_day_articles = gdelt_collector.extract_multiple_days_using_ticker(ticker = 'NVDA', days_backwards=2, max_records_per_day=50, delay_between_days=6.0)
 
+    df = convert_articles_to_dataframe(seven_day_articles)
 
+    df.to_csv('news_articles.csv')
     if seven_day_articles:
         dates = [a.published_date.date() for a in seven_day_articles]
         date_counts = pd.Series(dates).value_counts().sort_index()
 
-        print(f"=" * 50)
-        print(f" Total articles from 7 days : {len(seven_day_articles)}")
+    #     print(f"=" * 50)
+    #     print(f" Total articles from 7 days : {len(seven_day_articles)}")
 
-        for date, count in date_counts.items():
-            print(f" {date}: {count} articles")
+    #     for date, count in date_counts.items():
+    #         print(f" {date}: {count} articles")
 
-    # save to file for checking
-    with open('multi_day_test.json','w') as f:
-        json.dump([asdict(a) for a in seven_day_articles],f, indent = 2, default=_json_default)
+    # # save to file for checking
+    # with open('multi_day_test.json','w') as f:
+    #     json.dump([asdict(a) for a in seven_day_articles],f, indent = 2, default=_json_default)
 
 
 
