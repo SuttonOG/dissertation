@@ -10,6 +10,14 @@ def convert_articles_to_dataframe(articles : NewsArticle) -> pd.DataFrame:
     if not articles:
         print(f"No articles were found to convert")
         return pd.DataFrame
+
+
+    
+    # added debugging for if articles is None
+
+    if not articles:
+        print("No articles were found for converting")
+        return None
     
     # convert to list of dictionarys, from list of newsarticle objects
     dict_articles = [asdict(article) for article in articles]
