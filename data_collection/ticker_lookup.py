@@ -94,6 +94,7 @@ def collect_from_yf(ticker: str)  -> Optional[Dict]:
     if not company_name and not quote_type:
         raise ValueError(f"Was unable to get ticker information from yfinance for {ticker}")
     
+    
     extracted_short_name = ticker_info.get("shortName") or company_name
     # remove company endings
     short_name = remove_company_endings(extracted_short_name)
