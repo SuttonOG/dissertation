@@ -7,13 +7,13 @@ import time
 import re
 import urllib.parse
 import json
-from rss_collector import NewsArticle
-from ticker_lookup import QueryPack, collect_from_yf, build_query_from_pack
 import requests
-from article_to_dataframe import convert_articles_to_dataframe
+
 # this will be how articles are extracted using GDELT
 
-
+from data_collection.models import NewsArticle
+from data_collection.ticker_lookup import QueryPack, collect_from_yf, build_query_for_gdelt
+from processing.article_to_dataframe import convert_articles_to_dataframe
 
 
 class GDELTCollector:
@@ -70,48 +70,6 @@ class GDELTCollector:
         return dt.strftime('%Y%m%d%H%M%S')
     
 
-    def build_query_for_gdelt(self,query_pack : Dict[str,Any], include_financial_terms: bool = True) -> str:
-    #Extract info from query pack to build GDELT query
-        ticker = (query_pack.get("ticker") or "").strip().upper()
-        company = (query_pack.get("company_name") or "").strip()
-        short_name = (query_pack.get("short_name") or "").strip()
-        aliases = query_pack.get("name_aliases", [])
-
-        search_terms = set()
-
-        if ticker:
-            search_terms.add(ticker)
-        if company:
-            search_terms.add(f'"{company}"')
-        if short_name and short_name.lower() != company.lower():
-            search_terms.add(f'"{short_name}"')
-
-        # add aliases also
-        for alias in aliases:
-            alias = alias.strip()  # remove whitespace
-            if alias and alias.upper() != ticker:
-                if ' ' in alias:
-                    search_terms.add(f'"{alias}"')
-                else:
-                    search_terms.add(alias)
-        
-        if not search_terms:
-            return ticker or company or ""
-        
-        core_query = " OR ".join(sorted(search_terms))
-
-        # used to filter out rubbish news articles - for example gaming PC's for nvidia - can later build
-        if include_financial_terms:
-            financial_terms = [
-                    "stock", "shares", "earnings", "revenue", "market",
-                    "investor", "trading", "quarter", "CEO", "profit"
-                ]
-            context_query = " OR ".join(financial_terms)
-            return f"({core_query}) ({context_query})"
-        else:
-            return f"({core_query})"
-
-    
     # extracts articles after the gdelt query pack has been made
     def extract_articles(self, query: str, timespan: str = None, start_datetime: datetime = None, 
                         end_datetime : datetime = None, max_records: int = 250, sort: str = 'datedesc',
@@ -222,7 +180,7 @@ class GDELTCollector:
             # will add fallback later to search normally
 
         # now we have query pack, search for articles using it
-        gdelt_query = self.build_query_for_gdelt(asdict(query_pack))
+        gdelt_query = build_query_for_gdelt(asdict(query_pack))
 
         time_span = f'{days_back}d'
         return self.extract_articles(
@@ -314,7 +272,7 @@ class GDELTCollector:
             return []
     
     # build gdelt query from pack
-        gdelt_query = self.build_query_for_gdelt(asdict(query_pack))
+        gdelt_query = build_query_for_gdelt(asdict(query_pack))
     
     # Use multi-day extraction - pass to multi-day extract method
         return self.extract_articles_multiple_days(

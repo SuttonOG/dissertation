@@ -1,10 +1,7 @@
 import pandas as pd
-
-
-from rss_collector import NewsArticle
 from dataclasses import dataclass, field, asdict
-
-
+# from data_collection.models import NewsArticle
+from data_collection.models import NewsArticle
 # used to convert a list of news article objects to a dataframe
 
 

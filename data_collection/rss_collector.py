@@ -14,20 +14,12 @@ from dataclasses import dataclass, field,asdict            # dataclass used for 
 from typing import List, Dict, Optional, Set, Tuple             
 import yfinance as yf         
 import os                       # extracting stock data
-from ticker_lookup import collect_from_yf, build_query_from_pack
 
- 
+from data_collection.ticker_lookup import collect_from_yf, build_query_from_pack
+from data_collection.models import NewsArticle
 
 #Define Article dataclass
 
-@dataclass
-class NewsArticle:
-    title: str
-    source: str
-    url: str
-    published_date: datetime
-    summary: str = ''                   # not all articles extract a summary
-    content: Optional[str] = None
 
 
 # Helper Functions - converting dates to different formats for each API
