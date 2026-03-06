@@ -8,6 +8,7 @@ numpy >= 1.24.0
 feedparser>=6.0.10
 requests>=2.31.0
 trafilatura>=1.6.0
+lxml_html_clean>=0.4.1          # dependency for trafilatura
 
 
 #Text Processing Libraries   - UPDATE later if needed/notneeded

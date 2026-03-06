@@ -26,7 +26,7 @@ class GDELTCollector:
 
     TIMEOUT = 30                        # DEFault request timeout allowed
 
-    REQUEST_DELAY = 1.0                 # TIME BETWEEN requests, limits API intensity
+    REQUEST_DELAY = 5.0                 # TIME BETWEEN requests, limits API intensity
 
     MULTIPLE_DAYS_REQUEST_DELAY = 6.0     # gdelt API recommends at least 5 seconds inbetween API calls to rate limit
 
@@ -121,9 +121,16 @@ class GDELTCollector:
 
             try:
                 print(f"\n Beginning GDELT Query for {combined_query}")
-                response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)        # url, parameters, 1ms timeout 
+                response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)
+
+                # handle rate limiting with retry
+                if response.status_code == 429:
+                    print(" Was rate limited by GDELT. Waiting 10 seconds and retrying...")
+                    time.sleep(10)
+                    response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)
+
                 response.raise_for_status()
-                
+
                 # error handling - check for empty response
                 response_text = response.text.strip()
                 if not response_text:
@@ -157,12 +164,16 @@ class GDELTCollector:
                 print(f"The GDELT Request timed out")
             except requests.exceptions.HTTPError as e:
                 status_code = e.response.status_code if e.response else "unknown"
-                body = e.response.text if e.response else ""
+                body = e.response.text[:500] if e.response else "no response body"
                 print(f"HTTP Error {status_code} when using GDELT")
-                print(f"Response body: ")
+                print(f"Response body: {body}")
+                print(f"Request URL: {e.response.url if e.response else 'unknown'}")
                 print(body[:1000])
+            except Exception as e:
+                print(f"Unexpected error: {type(e).__name__}: {e}")
             except ValueError as e:
                 print(f"Error in parsing request response : {e}")
+            
             
             return extracted_articles                           # if it doesnt fail, return all of the extracted files
 
@@ -301,29 +312,15 @@ def _json_default(obj):
 
 
 if __name__ == "__main__":
+    collector = GDELTCollector()
+    articles = collector.extract_multiple_days_using_ticker(
+        ticker='NVDA', days_backwards=2, max_records_per_day=50, delay_between_days=6.0
+    )
 
-    # Test of multi-day extraction 
-    gdelt_collector = GDELTCollector()
-
-    # extract 7 days of articles
-    seven_day_articles = gdelt_collector.extract_multiple_days_using_ticker(ticker = 'NVDA', days_backwards=2, max_records_per_day=50, delay_between_days=6.0)
-
-    df = convert_articles_to_dataframe(seven_day_articles)
-
-    df.to_csv('news_articles.csv')
-    if seven_day_articles:
-        dates = [a.published_date.date() for a in seven_day_articles]
-        date_counts = pd.Series(dates).value_counts().sort_index()
-
-    #     print(f"=" * 50)
-    #     print(f" Total articles from 7 days : {len(seven_day_articles)}")
-
-    #     for date, count in date_counts.items():
-    #         print(f" {date}: {count} articles")
-
-    # # save to file for checking
-    # with open('multi_day_test.json','w') as f:
-    #     json.dump([asdict(a) for a in seven_day_articles],f, indent = 2, default=_json_default)
-
-
+    df = convert_articles_to_dataframe(articles)
+    if df is not None and not df.empty:
+        df.to_csv('news_articles.csv')
+        print(f"\nSaved {len(df)} articles to news_articles.csv")
+    else:
+        print("No articles to save")
 
