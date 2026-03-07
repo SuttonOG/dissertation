@@ -123,10 +123,13 @@ class GDELTCollector:
                 print(f"\n Beginning GDELT Query for {combined_query}")
                 response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)
 
-                # handle rate limiting with retry
-                if response.status_code == 429:
-                    print(" Was rate limited by GDELT. Waiting 10 seconds and retrying...")
-                    time.sleep(10)
+                # handle rate limiting with retries
+                retries = 0
+                while response.status_code == 429 and retries < 3:
+                    retries += 1
+                    wait_time = 10 * retries
+                    print(f"  Rate limited by GDELT. Retry {retries}/3, waiting {wait_time}s...")
+                    time.sleep(wait_time)
                     response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)
 
                 response.raise_for_status()
