@@ -38,7 +38,7 @@ def aggregate_aggregated_daily_sentiment_df_sentiment(df: pd.DataFrame) -> pd.Da
 
     aggregated_daily_sentiment_df = aggregated_daily_sentiment_df.set_index('published_day')            # set index to be date
 
-    
+
     aggregated_daily_sentiment_df['positive_ratio'] = (positive_counts / total_counts).fillna(0)        
     aggregated_daily_sentiment_df['negative_ratio'] = (negative_counts / total_counts).fillna(0)
     aggregated_daily_sentiment_df = aggregated_daily_sentiment_df.reset_index()
@@ -140,3 +140,32 @@ def build_feature_matrix(articles_df: pd.DataFrame,
     print(feature_matrix.describe().round(4))
 
     return feature_matrix
+
+# testing block
+if __name__ == "__main__":
+    import os
+
+    # test with existing CSV files
+    articles_csv = "data/articles_NVDA_2d.csv"
+    prices_csv = "data/prices_NVDA_2d.csv"
+
+    if os.path.exists(articles_csv):
+        articles_df = pd.read_csv(articles_csv)
+
+        # check if vader scores exist first 
+        if 'vader_compound' not in articles_df.columns:
+            print("No vader_compound column found - run VADER scoring first")
+        else:
+            price_df = None
+            if os.path.exists(prices_csv):
+                price_df = pd.read_csv(prices_csv, index_col=0, parse_dates=True)
+
+            feature_matrix = build_feature_matrix(articles_df, price_df)            # build feature matrix with dataframes
+
+            # save
+            output_path = "data/feature_matrix.csv"
+            feature_matrix.to_csv(output_path, index=False)
+            print(f"\nFeature matrix saved to {output_path}")
+    else:
+        print(f"Unable to find any articles file found at {articles_csv}")
+        print("If this occurs, run the pipeline first with  python pipeline.py --scrape")

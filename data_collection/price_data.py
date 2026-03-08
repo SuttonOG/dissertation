@@ -33,8 +33,8 @@ def get_price_extracted_data(ticker: str = "NVDA",
     if start_date:
         start_dt = pd.to_datetime(start_date)
     else:
-        # add buffer days to account for weekends/holidays
-        start_dt = end_dt - timedelta(days=days_back + 10)
+        # add buffer days to account for weekends/holidays - UPDATED so on a weekend it still catches tarding days
+        start_dt = end_dt - timedelta(days=max(days_back + 10, 14))
 
     print(f"Extracting price extracted_data for {ticker}: {start_dt.date()} to {end_dt.date()}")
 
