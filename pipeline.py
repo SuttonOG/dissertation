@@ -9,7 +9,7 @@ from data_collection.rss_collector import RSSFeedCollector
 from data_collection.content_scraper import ContentScraper
 from data_collection.price_data import get_price_extracted_data
 from processing.article_to_dataframe import convert_articles_to_dataframe
-
+from processing.sentiment_vader import VaderScorer
 
 
 
@@ -80,13 +80,18 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     else:
         print(f"\n--- Step 4: Scraping SKIPPED ---")           # skip if scraping set to 0
 
-
+    # Step 5: VADER sentiment scoring
+    print(f"\n--- Step 5: VADER Sentiment Scoring ---")
+    vader = VaderScorer()
+    df = vader.score_dataframe(df)
     
-    # Step 5: Extract Price data for ticker (price_data)
+    # Step 6: Extract Price data for ticker (price_data)
     print(f"\n--- Step 5: Fetching price data ---")
     price_df = get_price_extracted_data(ticker=ticker, days_back=days_back)
 
-    # Step 6: Save 
+
+    
+    # Step 7: Save 
     print(f"\n--- Step 6: Saving outputs ---")
 
     articles_path = os.path.join(output_dir, f"articles_{ticker}_{days_back}d.csv")
