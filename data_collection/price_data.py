@@ -68,9 +68,11 @@ def get_price_extracted_data(ticker: str = "NVDA",
         # add a date column from the index for easier merging later
         extracted_data['date'] = extracted_data.index.date
 
+        
         # trim to the actual requested period (remove buffer days)
         if not start_date:
-            actual_start = end_dt - timedelta(days=days_back)
+            trim_days = max(days_back, 7)  # use at least 7 days to ensure trading days are captured on short runs
+            actual_start = end_dt - timedelta(days=trim_days)
             extracted_data = extracted_data[extracted_data.index >= pd.Timestamp(actual_start)]
 
         # drop the first row (NaN return)

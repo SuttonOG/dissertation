@@ -43,7 +43,7 @@ def aggregate_aggregated_daily_sentiment_df_sentiment(df: pd.DataFrame) -> pd.Da
     aggregated_daily_sentiment_df['negative_ratio'] = (negative_counts / total_counts).fillna(0)
     aggregated_daily_sentiment_df = aggregated_daily_sentiment_df.reset_index()
 
-    # Error handling - fill NaN std (happens when only 1 article in a day) with 0
+    # Error handling - fill NaN strading_day (happens when only 1 article in a day) with 0
     aggregated_daily_sentiment_df['vader_std'] = aggregated_daily_sentiment_df['vader_std'].fillna(0)
 
     # sort by date
@@ -84,22 +84,40 @@ def merge_with_prices(aggregated_daily_sentiment_df_sentiment: pd.DataFrame,
         prices['date'] = pd.to_datetime(prices.index)
 
     # merge on date
+    # align weekend/holiday news to nearest trading day
+    trading_dates = sorted(prices['date'].unique())
+    
+    def nearest_trading_day(news_date):
+
+        # maps news date to nearest trading day e.g weekend goes to monday 
+       
+        for trading_day in trading_dates:
+            if trading_day >= news_date:
+                return trading_day
+        # if no future trading day found, use the most recent past one
+        for trading_day in reversed(trading_dates):
+            if trading_day <= news_date:
+                return trading_day
+        return None
+
+    aggregated_daily_sentiment_df['trading_day'] = aggregated_daily_sentiment_df['published_day'].apply(nearest_trading_day)
+
+    # merge on aligned trading day
     merged = pd.merge(
         aggregated_daily_sentiment_df,
-        prices[['date', 'aggregated_daily_sentiment_df_return', 'log_return',
+        prices[['date', 'daily_return', 'log_return',
                 'realised_volatility_5d', 'realised_volatility_20d']],
-        left_on='published_day',
+        left_on='trading_day',
         right_on='date',
         how='inner'
     )
-
     # drop redundant date column
     if 'date' in merged.columns:
         merged = merged.drop(columns=['date'])
 
     # drop rows with missing returns
     before = len(merged)
-    merged = merged.dropna(subset=['aggregated_daily_sentiment_df_return'])
+    merged = merged.dropna(subset=['daily_return'])
     dropped = before - len(merged)
     if dropped > 0:
         print(f"  Dropped {dropped} rows with missing return data")
