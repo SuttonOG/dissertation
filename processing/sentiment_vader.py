@@ -92,8 +92,8 @@ class VaderScorer:
         print(f"  Score range: [{df['vader_compound'].min():.4f}, {df['vader_compound'].max():.4f}]")
 
         # sentiment distribution
-        positive_articles = (df['vader_compound'] > 0.05).sum()
-        negative_articles = (df['vader_compound'] < -0.05).sum()
+        positive_articles = (df['vader_compound'] > 0.05).sum()             # assign positive if vader score above 0.05
+        negative_articles = (df['vader_compound'] < -0.05).sum()            # assign negative if vader score below -0.05
         neutral_articles = len(df) - positive_articles - negative_articles
         print(f"  Distribution: {positive_articles} positive_articles, {neutral_articles} neutral_articles, {negative_articles} negative_articles")
 
