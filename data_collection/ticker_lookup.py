@@ -80,7 +80,7 @@ def remove_company_endings(name : str) -> str:
 
 #Build a dict of information/build a pack to qwuery using yfinance ticker info
 
-def collect_from_yf(ticker: str)  -> Optional[Dict]:
+def collect_from_yf(ticker: str)  -> QueryPack:         #updated return type to QueryPack to remove type errors
     
     #builds a querypack from yfinance ticker
     extracted_ticker = yf.Ticker(ticker)

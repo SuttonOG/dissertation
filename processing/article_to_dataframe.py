@@ -3,13 +3,14 @@ from dataclasses import dataclass, field, asdict
 # from data_collection.models import NewsArticle
 from data_collection.models import NewsArticle
 # used to convert a list of news article objects to a dataframe
+from typing import List
 
 
-def convert_articles_to_dataframe(articles : NewsArticle) -> pd.DataFrame:
+def convert_articles_to_dataframe(articles : List[NewsArticle]) -> pd.DataFrame:
 
     if not articles:
         print(f"No articles were found to convert")
-        return pd.DataFrame
+        return pd.DataFrame()       # return empty instance 
 
 
     

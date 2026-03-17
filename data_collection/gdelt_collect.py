@@ -7,7 +7,7 @@ import time
 import re
 import urllib.parse
 import json
-import requests
+
 
 # this will be how articles are extracted using GDELT
 
@@ -172,10 +172,11 @@ class GDELTCollector:
                 print(f"Response body: {body}")
                 print(f"Request URL: {e.response.url if e.response else 'unknown'}")
                 print(body[:1000])
-            except Exception as e:
-                print(f"Unexpected error: {type(e).__name__}: {e}")
             except ValueError as e:
                 print(f"Error in parsing request response : {e}")
+            except Exception as e:
+                print(f"Unexpected error: {type(e).__name__}: {e}")     # place Exception after valueerorr 
+
             
             
             return extracted_articles                           # if it doesnt fail, return all of the extracted files
