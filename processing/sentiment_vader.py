@@ -86,6 +86,7 @@ class VaderScorer:
         title_scored = (df['vader_source'] == 'title').sum()
         mean_score = df['vader_compound'].mean()
 
+        #display to terminal for debug
         print(f"  Scored from content: {content_scored}")
         print(f"  Scored from title:   {title_scored}")
         print(f"  Mean compound score: {mean_score:.4f}")
