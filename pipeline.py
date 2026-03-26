@@ -1,4 +1,5 @@
 # Main pipeline for running the full script.
+# takes a ticker, collects news, scores sentiment, clusters, and visualises
 
 import argparse                     # parser for cmd line args 
 import os
@@ -10,6 +11,9 @@ from data_collection.content_scraper import ContentScraper
 from data_collection.price_data import get_price_extracted_data
 from processing.article_to_dataframe import convert_articles_to_dataframe
 from processing.sentiment_vader import VaderScorer
+from processing.feature_aggregate import build_feature_matrix
+from analysis.clustering import run_clustering
+from visualization.visualize_results import generate_all_charts
 
 
 
@@ -21,8 +25,12 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
         # 2. Collect articles from RSS feeds  -- maybe optional for now, as theyre not very good
         # 3. Combine and deduplicate articles into a main DataFrame
         # 4. Optionally scrape article content 
-        # 5. Fetch price data from yfinance
-        # 6. Save everything
+        # 5. VADER Sentiment Scoring
+        # 6. Fetch price data from yfinance
+        # 7. Build feature matrix (aggregate daily sentiment + merge with prices)
+        # 8. Clustering (HDBSCAN)
+        # 9. Visualisations
+        # 10. Save everything
 
 
     os.makedirs(output_dir, exist_ok=True)
@@ -34,7 +42,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     print(f"\nScraping = {'ON' if scrape else 'OFF'}")      
 
     # Step 1 - Run GDELT for ticker, extract articles
-    print(f"\n ---- Step 1 GDELT Article Extraction for {ticker} ----")
+    print(f"\n ---- Step 1: GDELT Article Extraction for {ticker} ----")
     gdelt = GDELTCollector()
     gdelt_articles = gdelt.extract_multiple_days_using_ticker(
         ticker=ticker,
@@ -45,7 +53,8 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     print(f"GDELT Article Count: {len(gdelt_articles)}")
 
 
-    #Step 2: RSS feed extarctor - may comment out for now
+    # Step 2: RSS feed extractor - may comment out for now
+    rss_articles = []
     if enable_rss:
         print(f"\n--- Step 2: RSS feed collection ---")
         rss = RSSFeedCollector()
@@ -54,17 +63,17 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     else:
          print(f"\n RSS Feed Extraction disabled - Skipping....")
 
-    #Step 3: Combine the extracted articles and deduplicate 
+    # Step 3: Combine the extracted articles and deduplicate 
     print(f"\n --- Step 3: Combine extracted articles and deduplicate them ---")
     all_articles = gdelt_articles + rss_articles
     print(f"Total before duplicates removed: {len(all_articles)}")
 
     df = convert_articles_to_dataframe(all_articles)
     if df is None or df.empty:
-        print("ERROR: No articles collected. Exiting pipeline....")
+        print("ERROR: No articles were collected. Exiting pipeline....")
         return
 
-    #Step 4 - scrape content from articles extracted from GDELT (body etc)
+    # Step 4 - scrape content from articles extracted from GDELT (body etc)
     if scrape:
         print(f"\n--- Step 4: Content scraping articles ---")
         scraper = ContentScraper(
@@ -86,36 +95,85 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     df = vader.score_dataframe(df)
     
     # Step 6: Extract Price data for ticker (price_data)
-    print(f"\n--- Step 5: Fetching price data ---")
+    print(f"\n--- Step 6: Fetching price data ---")
     price_df = get_price_extracted_data(ticker=ticker, days_back=days_back)
 
+    # Step 7: Build feature matrix (aggregate daily sentiment + merge with prices)
+    print(f"\n--- Step 7: Building feature matrix ---")
+    feature_matrix = build_feature_matrix(df, price_df)
 
-    
-    # Step 7: Save 
-    print(f"\n--- Step 6: Saving outputs ---")
+    # Step 8: Clustering
+    # adjust min_cluster_size based on how much data we have
+    # for short runs (< 10 days) use smaller clusters so we actually get results
+    min_cs = max(3, len(feature_matrix) // 10)      # roughly 10% of data points
+    min_cs = min(min_cs, 10)                         # but cap it at 10
+
+    print(f"\n--- Step 8: Clustering (HDBSCAN) ---")
+    print(f"  using min_cluster_size={min_cs} for {len(feature_matrix)} data points")
+    feature_matrix, clusterer = run_clustering(
+        feature_matrix,
+        min_cluster_size=min_cs,
+        min_samples=2
+    )
+
+    # get cluster profiles for the summary
+    profiles = clusterer.get_cluster_profiles(feature_matrix)
+
+    # Step 9: Generate visualisations
+    print(f"\n--- Step 9: Generating visualisations ---")
+    chart_dir = os.path.join(output_dir, "charts")
+    generate_all_charts(
+        feature_matrix=feature_matrix,
+        articles_df=df,
+        ticker=ticker,
+        output_dir=chart_dir
+    )
+
+    # Step 10: Save everything
+    print(f"\n--- Step 10: Saving outputs ---")
 
     articles_path = os.path.join(output_dir, f"articles_{ticker}_{days_back}d.csv")
     df.to_csv(articles_path, index=False)
-    print(f"Articles saved: {articles_path}")
-
+    print(f"  Articles saved: {articles_path}")
 
     if price_df is not None:
         price_path = os.path.join(output_dir, f"prices_{ticker}_{days_back}d.csv")
         price_df.to_csv(price_path)
-        print(f"Prices saved: {price_path}")
+        print(f"  Prices saved: {price_path}")
 
+    feature_path = os.path.join(output_dir, f"features_{ticker}_{days_back}d.csv")
+    feature_matrix.to_csv(feature_path, index=False)
+    print(f"  Feature matrix saved: {feature_path}")
+
+    if not profiles.empty:
+        profiles_path = os.path.join(output_dir, f"cluster_profiles_{ticker}_{days_back}d.csv")
+        profiles.to_csv(profiles_path)
+        print(f"  Cluster profiles saved: {profiles_path}")
 
     # print summary to console
-
     time_taken = time.time() - start_time
     print(f"\n{'=' * 60}")
-    print(f"PIPELINE COMPLETE")
+    print(f"PIPELINE IS NOW     COMPLETE")
+    print(f"  Ticker:         {ticker}")
     print(f"  Articles:       {len(df)}")
+
     if 'content' in df.columns:
         print(f"  With content:   {df['content'].notna().sum()}")
+
+
     print(f"  Price days:     {len(price_df) if price_df is not None else 0}")
-    print(f"  Duration:   {time_taken:.1f} seconds")
-    print(f"  Output directory:     {os.path.abspath(output_dir)}")
+    print(f"  Feature days:   {len(feature_matrix)}")
+
+    n_clusters = feature_matrix[feature_matrix['cluster_label'] >= 0]['cluster_label'].nunique()
+
+    print(f"  Clusters found: {n_clusters}")
+
+    print(f"  Charts:         saved to {os.path.abspath(chart_dir)}")
+
+    print(f"  Duration:       {time_taken:.1f} seconds")
+
+    print(f"  Output dir:     {os.path.abspath(output_dir)}")
+    
     print("=" * 60)
 
 
@@ -123,13 +181,13 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
 if __name__ == "__main__":
 
         # parser for passing function args when running pipeline
-        parser = argparse.ArgumentParser(description="Financial news data collection pipeline")
+        parser = argparse.ArgumentParser(description="Financial news sentiment pipeline")
         parser.add_argument("--ticker", type=str, default="NVDA", help="Stock ticker (default: NVDA)")
         parser.add_argument("--days", type=int, default=2, help="Days of history (default: 2)")
         parser.add_argument("--max-per-day", type=int, default=50, help="Max GDELT articles per day (default: 50)")
         parser.add_argument("--scrape", action="store_true", help="Enable content scraping (off by default)")
         parser.add_argument("--output-dir", type=str, default="data", help="Output directory (default: data)")
-        parser.add_argument("--rss", action="store_true", help="Enable RSS feed extraction (default = True)")
+        parser.add_argument("--rss", action="store_true", help="Enable RSS feed extraction")
 
         args = parser.parse_args()
 
@@ -138,5 +196,6 @@ if __name__ == "__main__":
             days_back=args.days,
             max_records_per_day=args.max_per_day,
             scrape=args.scrape,
-            output_dir=args.output_dir
+            output_dir=args.output_dir,
+            enable_rss=args.rss
         )

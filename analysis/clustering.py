@@ -29,6 +29,9 @@ class SentimentClusterer:
                  min_cluster_size: int = 5,
                  min_samples: int = 3,
                  features: Optional[List[str]] = None):
+        
+        # min_cluster_size: smallest group HDBSCAN will consider a cluster 
+         #     (smaller = more clusters, might be noisy tho)
         """
         min_cluster_size: smallest group HDBSCAN will consider a cluster 
                           (smaller = more clusters, might be noisy tho)
@@ -44,6 +47,7 @@ class SentimentClusterer:
         self.fitted = False
 
     def fit_predict(self, feature_matrix: pd.DataFrame) -> pd.DataFrame:
+        
         """
         main method - takes the feature matrix from feature_aggregate.py,
         scales it, runs HDBSCAN, and returns the df with cluster labels added
