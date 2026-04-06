@@ -11,10 +11,11 @@ import hdbscan
 
 
 class SentimentClusterer:
-    """runs clustering on daily feature matrix to find market sentiment regimes"""
-
+  
+    # runs clustering on daily feature matrix produced to find market sentiment regines
     # these are the features we actually want to cluster on
     # dont want to include stuff like dates or article counts that would mess up the clustering
+
     DEFAULT_FEATURES = [
         'vader_mean',
         'vader_std',
@@ -30,32 +31,20 @@ class SentimentClusterer:
                  min_samples: int = 3,
                  features: Optional[List[str]] = None):
         
-        # min_cluster_size: smallest group HDBSCAN will consider a cluster 
-         #     (smaller = more clusters, might be noisy tho)
-        """
-        min_cluster_size: smallest group HDBSCAN will consider a cluster 
-                          (smaller = more clusters, might be noisy tho)
-        min_samples: how conservative the clustering is 
-                     (higher = more points become noise/-1)
-        features: which columns to use, defaults to the ones above
-        """
-        self.min_cluster_size = min_cluster_size
-        self.min_samples = min_samples
-        self.features = features or self.DEFAULT_FEATURES
+
+        self.min_cluster_size = min_cluster_size                            # smallest group HDBSCAN will consider cluister. small = more clust, but might be noisy             
+        self.min_samples = min_samples                                      # how conservatice clustering is, high = more points become noise
+        self.features = features or self.DEFAULT_FEATURES                   #  cols to use, default to ones above
         self.scaler = StandardScaler()      # need to scale features or HDBSCAN freaks out
         self.clusterer = None               # gets set when we actually run fit()
         self.fitted = False
 
     def fit_predict(self, feature_matrix: pd.DataFrame) -> pd.DataFrame:
-        
-        """
-        main method - takes the feature matrix from feature_aggregate.py,
-        scales it, runs HDBSCAN, and returns the df with cluster labels added
 
-        returns the same dataframe but with extra columns:
-            - cluster_label: which cluster each day belongs to (-1 = noise/outlier)
-            - cluster_probability: how confident HDBSCAN is about the assignment
-        """
+        # main method - takes feature matrix from feature_aggregate.py -> scales -> runs hdbscan -> returns df + cluster labels
+        
+        # return same df but with extra cols (cluster_label - the cluster a day belongs to (-1 is outlier) and cluster_probability (how confident HDBSCAN is))
+
         df = feature_matrix.copy()
 
         # figure out which features we can actually use (some might be missing)
@@ -152,10 +141,9 @@ class SentimentClusterer:
                 print(f"    pos/neg ratio:  {cluster_df['positive_ratio'].mean():.2f} / {cluster_df['negative_ratio'].mean():.2f}")
 
     def get_cluster_profiles(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        builds a nice summary table of each cluster's characteristics
-        useful for the dissertation writeup and for the visualisations
-        """
+
+        # build summary table of each clusters characteristics for write up
+
         if 'cluster_label' not in df.columns:
             print("no cluster labels found - run fit_predict first")
             return pd.DataFrame()
@@ -184,18 +172,40 @@ class SentimentClusterer:
         return profiles
 
 
-# convenience function so we dont have to instantiate the class every time
+# convenience function so dont have to instantiate the class every time
 def run_clustering(feature_matrix: pd.DataFrame,
                    min_cluster_size: int = 5,
-                   min_samples: int = 3) -> Tuple[pd.DataFrame, SentimentClusterer]:
-    """
-    quick way to run clustering - returns the labelled dataframe and the clusterer object
-    handy for the pipeline where we just want to call one function
-    """
-    clusterer = SentimentClusterer(
-        min_cluster_size=min_cluster_size,
-        min_samples=min_samples
-    )
+                   min_samples: int = 3,
+                   method: str = 'hdbscan',
+                   n_clusters: Optional[int] = None,
+                   max_k: int = 8,
+                   random_state: int = 42) -> Tuple[pd.DataFrame, object]:
+    
+    
+    # returns labelled df + clusterer object
+    # handy for pipelien for just calling one func
+    # pass cluster method 'hdbscan' / 'kmeans'
+    # max_k for kmeans upper bound, 
+    # n_clusters for k-means no. clusters
+
+
+    # k means method
+    if method == 'kmeans':
+        from analysis.clustering_kmeans import KMeansClusterer
+        clusterer = KMeansClusterer(
+            n_clusters=n_clusters,
+            max_k=max_k,
+            random_state=random_state,
+        )
+    # hdbscan method
+    elif method == 'hdbscan':
+        clusterer = SentimentClusterer(
+            min_cluster_size=min_cluster_size,
+            min_samples=min_samples
+        )
+    else:
+        raise ValueError(f"Unknown clustering method: '{method}'. Use 'hdbscan' or 'kmeans'.")
+
     result = clusterer.fit_predict(feature_matrix)
     return result, clusterer
 
