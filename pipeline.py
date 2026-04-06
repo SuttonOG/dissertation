@@ -17,7 +17,7 @@ from visualization.visualize_results import generate_all_charts
 
 
 
-def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: int = 50, scrape: bool = False,  output_dir: str = "data", enable_rss : bool = True):
+def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: int = 50, scrape: bool = False,  output_dir: str = "data", enable_rss : bool = True, cluster_method: str = "hdbscan", n_clusters: int = None):
 
 
         # Steps:
@@ -108,13 +108,31 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     min_cs = max(3, len(feature_matrix) // 10)      # roughly 10% of data points
     min_cs = min(min_cs, 10)                         # but cap it at 10
 
-    print(f"\n--- Step 8: Clustering (HDBSCAN) ---")
-    print(f"  using min_cluster_size={min_cs} for {len(feature_matrix)} data points")
-    feature_matrix, clusterer = run_clustering(
-        feature_matrix,
-        min_cluster_size=min_cs,
-        min_samples=2
-    )
+    print(f"\n--- Step 8: Clustering ({cluster_method.upper()}) ---")
+
+    if cluster_method == 'hdbscan':
+        print(f"  using min_cluster_size={min_cs} for {len(feature_matrix)} data points")
+        feature_matrix, clusterer = run_clustering(
+            feature_matrix,
+            min_cluster_size=min_cs,
+            min_samples=2,
+            method='hdbscan'
+        )
+    elif cluster_method == 'kmeans':
+        print(f"  n_clusters={'auto' if n_clusters is None else n_clusters}")
+        feature_matrix, clusterer = run_clustering(
+            feature_matrix,
+            method='kmeans',
+            n_clusters=n_clusters,
+        )
+    else:
+        print(f"  Unknown method '{cluster_method}', falling back to HDBSCAN")
+        feature_matrix, clusterer = run_clustering(
+            feature_matrix,
+            min_cluster_size=min_cs,
+            min_samples=2,
+            method='hdbscan'
+        )
 
     # get cluster profiles for the summary
     profiles = clusterer.get_cluster_profiles(feature_matrix)
@@ -155,6 +173,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     print(f"\n{'=' * 60}")
     print(f"PIPELINE IS NOW     COMPLETE")
     print(f"  Ticker:         {ticker}")
+    print(f"  Cluster method: {cluster_method.upper()}")
     print(f"  Articles:       {len(df)}")
 
     if 'content' in df.columns:
@@ -188,6 +207,10 @@ if __name__ == "__main__":
         parser.add_argument("--scrape", action="store_true", help="Enable content scraping (off by default)")
         parser.add_argument("--output-dir", type=str, default="data", help="Output directory (default: data)")
         parser.add_argument("--rss", action="store_true", help="Enable RSS feed extraction")
+        parser.add_argument("--method", type=str, default="hdbscan", choices=["hdbscan", "kmeans"],
+                            help="Clustering method (default: hdbscan)")
+        parser.add_argument("--k", type=int, default=None,
+                            help="Number of clusters for K-Means (default: auto-select)")
 
         args = parser.parse_args()
 
@@ -197,5 +220,7 @@ if __name__ == "__main__":
             max_records_per_day=args.max_per_day,
             scrape=args.scrape,
             output_dir=args.output_dir,
-            enable_rss=args.rss
+            enable_rss=args.rss,
+            cluster_method=args.method,
+            n_clusters=args.k,
         )
