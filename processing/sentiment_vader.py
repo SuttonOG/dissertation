@@ -105,7 +105,7 @@ if __name__ == "__main__":
     # test with sample texts
     scorer = VaderScorer()
 
-    # Test with different Nvidia texts to see if sentiment scoring working successfully.
+    # Test with different Nvidia texts to see if sentiment scoring working successfully
     test_texts = [
         "NVIDIA stock surges after record earnings beat expectations",
         "Markets crash as trade war fears intensify amid tariff threats",

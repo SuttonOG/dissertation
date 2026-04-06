@@ -75,7 +75,7 @@ class GDELTCollector:
                         end_datetime : datetime = None, max_records: int = 250, sort: str = 'datedesc',
                         source_lang : str = None, source_country : str = None, domain: str = None) -> List[NewsArticle]:
 
-            # example GDELT parameters for building
+            # example args
             # query: GDELT query string (supports boolean operators)
             # timespan: Time range like "1d", "1w", "3months"
             # start_datetime: Precise start time (alternative to timespan)

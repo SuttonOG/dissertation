@@ -16,6 +16,9 @@ from datetime import datetime
 from unittest.mock import patch, MagicMock
 from dataclasses import asdict
 
+
+
+
 from data_collection.models import NewsArticle
 from data_collection.ticker_lookup import (
     remove_company_endings, collect_from_yf, build_query_for_gdelt,

@@ -116,6 +116,8 @@ def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
 
 def plot_cluster_scatter(df: pd.DataFrame, ticker: str = "",
                           output_dir: str = "output/charts"):
+    
+    
     """
     scatter plot showing the clusters - colour coded by cluster label
     uses sentiment on x axis and returns on y axis

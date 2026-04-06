@@ -84,7 +84,7 @@ def convert_articles_to_dataframe(articles : List[NewsArticle]) -> pd.DataFrame:
 
             paywall_count = duplicates_removed_df['content'].apply(check_for_paywall).sum()
             if paywall_count > 0:
-                duplicates_removed_df.loc[duplicates_removed_df['content'].apply(check_for_paywall), 'content'] = None
+                duplicates_removed_df.loc[duplicates_removed_df['content'].apply(check_for_paywall), 'content'] = None          # replace any with paywall to None
                 print(f"Removed {paywall_count} paywall articles (content will be set to None, will use title only)")
 
         return duplicates_removed_df                            # return deduped dataframe

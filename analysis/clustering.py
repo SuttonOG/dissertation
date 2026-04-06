@@ -81,6 +81,7 @@ class SentimentClusterer:
         valid_mask = X.notna().all(axis=1)
         X_clean = X[valid_mask]
 
+        # debugging - ensure dataframe size is >= cluster size, or unable to assign any clusters
         if len(X_clean) < self.min_cluster_size:
             print(f"  not enough valid data points ({len(X_clean)}) for clustering")
             print(f"  need at least {self.min_cluster_size} - try collecting more days of data")

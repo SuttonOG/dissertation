@@ -4,7 +4,7 @@ from typing import Optional
 
 
 
-def aggregate_aggregated_daily_sentiment_df_sentiment(df: pd.DataFrame) -> pd.DataFrame:
+def aggregate_daily_sentiment(df: pd.DataFrame) -> pd.DataFrame:
     
     # Aggregate the sentiment scores of articles to aggregated_daily_sentiment_df features
 
@@ -66,7 +66,7 @@ def merge_with_prices(aggregated_daily_sentiment_df_sentiment: pd.DataFrame,
     #Error handling, for weekend or holiday news roll it forward to monday/ next trading day. Only trading days kept in final output
 
     # Arguments:
-    # aggregated_daily_sentiment_df_sentiment - output from aggregate_aggregated_daily_sentiment_df_sentiment func
+    # aggregated_daily_sentiment_df_sentiment - output from aggregate_daily_sentiment func
     # price_df - the price data dataframe - contains 'date' column
 
     # Returns:
@@ -142,7 +142,7 @@ def build_feature_matrix(articles_df: pd.DataFrame,
     print(f"{'=' * 60}")
 
     # step 1: aggregate aggregated_daily_sentiment_df sentiment
-    aggregated_daily_sentiment_df = aggregate_aggregated_daily_sentiment_df_sentiment(articles_df)
+    aggregated_daily_sentiment_df = aggregate_daily_sentiment(articles_df)
 
     # step 2: merge with prices if available
     if price_df is not None and not price_df.empty:
