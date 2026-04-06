@@ -28,7 +28,7 @@ from processing.article_to_dataframe import convert_articles_to_dataframe
 from processing.sentiment_vader import VaderScorer
 from data_collection.price_data import get_price_extracted_data
 from processing.feature_aggregate import (
-    aggregate_aggregated_daily_sentiment_df_sentiment,
+    aggregate_daily_sentiment,
     build_feature_matrix,
 )
 
@@ -211,7 +211,7 @@ class TestFeatureAggregation:
             "published_day": ["2026-03-10", "2026-03-10", "2026-03-09"],        # 2 articles same day, one article another
             "vader_compound": [0.5, 0.3, -0.2],
         })
-        agg = aggregate_aggregated_daily_sentiment_df_sentiment(df)
+        agg = aggregate_daily_sentiment(df)
         assert len(agg) == 2                                                    # assert len == 2 , ensures the 2 same day have aggregated
 
         # assert cols present
