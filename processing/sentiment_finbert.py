@@ -1,22 +1,10 @@
-"""
-FinBERT Sentiment Analysis for Financial Text
-==============================================
 
-Simple implementation using HuggingFace pipeline.
-Matches the same interface as VaderScorer for easy swapping.
+# FinBERT Sentiment Analysis for Financial text
 
-Usage:
-    from processing.sentiment_finbert import FinBertScorer
-    
-    scorer = FinBertScorer()
-    
-    # Score single text (same as VADER)
-    scores = scorer.score_text("Markets rallied on strong earnings")
-    print(scores['compound'])  # e.g., 0.73
-    
-    # Score DataFrame (same as VADER)
-    df = scorer.score_dataframe(articles_df, use_content=True)
-"""
+"Simple implementation via hugginface pipeline"
+"Matches Same interface as VaderScorer so can be easily swapped"
+"Same usecase as Vader, create scorer, then score dataframe"
+
 
 import pandas as pd
 from transformers import pipeline
@@ -162,4 +150,4 @@ if __name__ == "__main__":
         print(f"\nSample scored articles:")
         print("-" * 60)
         for _, row in scored_df.head(10).iterrows():
-            print(f"  [{row['finbert_compound']:+.4f}] ({row['finbert_source']}) {row['title'][:70]}")
+            print(f"  [{row['finbert_compound']:+.4f}] ({row['finbert_source']}) {row['title'][:70]}")``
