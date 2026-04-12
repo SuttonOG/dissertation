@@ -12,29 +12,45 @@ import hdbscan
 
 class SentimentClusterer:
   
-    # runs clustering on daily feature matrix produced to find market sentiment regines
-    # these are the features we actually want to cluster on
-    # dont want to include stuff like dates or article counts that would mess up the clustering
+    # runs clustering on daily feature matrix produced to find market sentiment regimes
 
-    DEFAULT_FEATURES = [
-        'vader_mean',
-        'vader_std',
-        'vader_median',
-        'positive_ratio',
-        'negative_ratio',
-        'daily_return',
-        'realised_volatility_5d',
-    ]
+    # feature sets per sentiment scorer
+    # the sentiment columns match the output of aggregate_daily_sentiment
+    FEATURE_SETS = {
+        'vader': [
+            'vader_mean',
+            'vader_std',
+            'vader_median',
+            'positive_ratio',
+            'negative_ratio',
+            'daily_return',
+            'realised_volatility_5d',
+        ],
+        'finbert': [
+            'finbert_mean',
+            'finbert_std',
+            'finbert_median',
+            'positive_ratio',
+            'negative_ratio',
+            'daily_return',
+            'realised_volatility_5d',
+        ],
+    }
+
+    # keep DEFAULT_FEATURES for backward compatibility (defaults to vader)
+    DEFAULT_FEATURES = FEATURE_SETS['vader']
 
     def __init__(self,
                  min_cluster_size: int = 5,
                  min_samples: int = 3,
-                 features: Optional[List[str]] = None):
+                 features: Optional[List[str]] = None,
+                 sentiment: str = 'vader'):
         
 
-        self.min_cluster_size = min_cluster_size                            # smallest group HDBSCAN will consider cluister. small = more clust, but might be noisy             
-        self.min_samples = min_samples                                      # how conservatice clustering is, high = more points become noise
-        self.features = features or self.DEFAULT_FEATURES                   #  cols to use, default to ones above
+        self.min_cluster_size = min_cluster_size                            # smallest group HDBSCAN will consider cluster. small = more clust, but might be noisy             
+        self.min_samples = min_samples                                      # how conservative clustering is, high = more points become noise
+        self.sentiment = sentiment
+        self.features = features or self.FEATURE_SETS.get(sentiment, self.DEFAULT_FEATURES)
         self.scaler = StandardScaler()      # need to scale features or HDBSCAN freaks out
         self.clusterer = None               # gets set when we actually run fit()
         self.fitted = False
@@ -179,12 +195,14 @@ def run_clustering(feature_matrix: pd.DataFrame,
                    method: str = 'hdbscan',
                    n_clusters: Optional[int] = None,
                    max_k: int = 8,
-                   random_state: int = 42) -> Tuple[pd.DataFrame, object]:
+                   random_state: int = 42,
+                   sentiment: str = 'vader') -> Tuple[pd.DataFrame, object]:
     
     
     # returns labelled df + clusterer object
-    # handy for pipelien for just calling one func
+    # handy for pipeline for just calling one func
     # pass cluster method 'hdbscan' / 'kmeans'
+    # sentiment: 'vader' or 'finbert' - determines which feature columns to use
     # max_k for kmeans upper bound, 
     # n_clusters for k-means no. clusters
 
@@ -196,12 +214,14 @@ def run_clustering(feature_matrix: pd.DataFrame,
             n_clusters=n_clusters,
             max_k=max_k,
             random_state=random_state,
+            sentiment=sentiment,
         )
     # hdbscan method
     elif method == 'hdbscan':
         clusterer = SentimentClusterer(
             min_cluster_size=min_cluster_size,
-            min_samples=min_samples
+            min_samples=min_samples,
+            sentiment=sentiment,
         )
     else:
         raise ValueError(f"Unknown clustering method: '{method}'. Use 'hdbscan' or 'kmeans'.")

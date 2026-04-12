@@ -23,33 +23,50 @@ class KMeansClusterer:
     # includes auto k-selection via silhouette score if k not specified.
 
 
-    # same features as HDBSCAN clusterer for fair comparison
-    DEFAULT_FEATURES = [
-        'vader_mean',
-        'vader_std',
-        'vader_median',
-        'positive_ratio',
-        'negative_ratio',
-        'daily_return',
-        'realised_volatility_5d',
-    ]
+    # feature sets per sentiment scorer (same as HDBSCAN for fair comparison)
+    FEATURE_SETS = {
+        'vader': [
+            'vader_mean',
+            'vader_std',
+            'vader_median',
+            'positive_ratio',
+            'negative_ratio',
+            'daily_return',
+            'realised_volatility_5d',
+        ],
+        'finbert': [
+            'finbert_mean',
+            'finbert_std',
+            'finbert_median',
+            'positive_ratio',
+            'negative_ratio',
+            'daily_return',
+            'realised_volatility_5d',
+        ],
+    }
+
+    # keep DEFAULT_FEATURES for backward compatibility (defaults to vader)
+    DEFAULT_FEATURES = FEATURE_SETS['vader']
 
     def __init__(self,
                  n_clusters: Optional[int] = None,
                  max_k: int = 8,
                  random_state: int = 42,
-                 features: Optional[List[str]] = None):
+                 features: Optional[List[str]] = None,
+                 sentiment: str = 'vader'):
         """
         n_clusters: number of clusters (k). If None, auto-selects best k
                     using silhouette score over range 2..max_k
         max_k: upper bound for k search when n_clusters is None
         random_state: seed for reproducibility
-        features: which columns to cluster on, defaults to same as HDBSCAN
+        features: which columns to cluster on. If None, auto-selects based on sentiment param
+        sentiment: which scorer was used ('vader' or 'finbert'), determines default features
         """
         self.n_clusters = n_clusters
         self.max_k = max_k
         self.random_state = random_state
-        self.features = features or self.DEFAULT_FEATURES
+        self.sentiment = sentiment
+        self.features = features or self.FEATURE_SETS.get(sentiment, self.DEFAULT_FEATURES)
         self.scaler = StandardScaler()
         self.model = None
         self.fitted = False

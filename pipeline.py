@@ -17,7 +17,7 @@ from visualization.visualize_results import generate_all_charts
 
 
 
-def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: int = 50, scrape: bool = False,  output_dir: str = "data", enable_rss : bool = True, cluster_method: str = "hdbscan", n_clusters: int = None):
+def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: int = 50, scrape: bool = False,  output_dir: str = "data", enable_rss : bool = True, cluster_method: str = "hdbscan", n_clusters: int = None, sentiment: str = "vader"):
 
 
         # Steps:
@@ -89,18 +89,23 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     else:
         print(f"\n--- Step 4: Scraping SKIPPED ---")           # skip if scraping set to 0
 
-    # Step 5: VADER sentiment scoring
-    print(f"\n--- Step 5: VADER Sentiment Scoring ---")
-    vader = VaderScorer()
-    df = vader.score_dataframe(df)
+    # Step 5: Sentiment scoring (VADER or FinBERT)
+    print(f"\n--- Step 5: {sentiment.upper()} Sentiment Scoring ---")
+    if sentiment == 'finbert':
+        from processing.sentiment_finbert import FinBertScorer
+        scorer = FinBertScorer()
+        df = scorer.score_dataframe(df)
+    else:
+        vader = VaderScorer()
+        df = vader.score_dataframe(df)
     
     # Step 6: Extract Price data for ticker (price_data)
     print(f"\n--- Step 6: Fetching price data ---")
     price_df = get_price_extracted_data(ticker=ticker, days_back=days_back)
 
     # Step 7: Build feature matrix (aggregate daily sentiment + merge with prices)
-    print(f"\n--- Step 7: Building feature matrix ---")
-    feature_matrix = build_feature_matrix(df, price_df)
+    print(f"\n--- Step 7: Building feature matrix ({sentiment.upper()}) ---")
+    feature_matrix = build_feature_matrix(df, price_df, sentiment=sentiment)
 
     # Step 8: Clustering
     # adjust min_cluster_size based on how much data we have
@@ -116,7 +121,8 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
             feature_matrix,
             min_cluster_size=min_cs,
             min_samples=2,
-            method='hdbscan'
+            method='hdbscan',
+            sentiment=sentiment,
         )
     elif cluster_method == 'kmeans':
         print(f"  n_clusters={'auto' if n_clusters is None else n_clusters}")
@@ -124,6 +130,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
             feature_matrix,
             method='kmeans',
             n_clusters=n_clusters,
+            sentiment=sentiment,
         )
     else:
         print(f"  Unknown method '{cluster_method}', falling back to HDBSCAN")
@@ -131,7 +138,8 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
             feature_matrix,
             min_cluster_size=min_cs,
             min_samples=2,
-            method='hdbscan'
+            method='hdbscan',
+            sentiment=sentiment,
         )
 
     # get cluster profiles for the summary
@@ -173,6 +181,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     print(f"\n{'=' * 60}")
     print(f"PIPELINE IS NOW     COMPLETE")
     print(f"  Ticker:         {ticker}")
+    print(f"  Sentiment:      {sentiment.upper()}")
     print(f"  Cluster method: {cluster_method.upper()}")
     print(f"  Articles:       {len(df)}")
 
@@ -211,6 +220,8 @@ if __name__ == "__main__":
                             help="Clustering method (default: hdbscan)")
         parser.add_argument("--k", type=int, default=None,
                             help="Number of clusters for K-Means (default: auto-select)")
+        parser.add_argument("--sentiment", type=str, default="vader", choices=["vader", "finbert"],
+                            help="Sentiment scorer to use (default: vader)")
 
         args = parser.parse_args()
 
@@ -223,4 +234,5 @@ if __name__ == "__main__":
             enable_rss=args.rss,
             cluster_method=args.method,
             n_clusters=args.k,
+            sentiment=args.sentiment,
         )

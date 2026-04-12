@@ -3,60 +3,82 @@ import numpy as np
 from typing import Optional
 
 
+# maps each sentiment scorer to its compound column name in the articles dataframe
+SENTIMENT_COMPOUND_COL = {
+    'vader': 'vader_compound',
+    'finbert': 'finbert_compound',
+}
 
-def aggregate_daily_sentiment(df: pd.DataFrame) -> pd.DataFrame:
+
+def aggregate_daily_sentiment(df: pd.DataFrame,
+                              sentiment: str = 'vader') -> pd.DataFrame:
     
-    # Aggregate the sentiment scores of articles to aggregated_daily_sentiment_df features
-
+    # Aggregate article-level sentiment scores into daily features.
+    #
     # Args:
-    #    df: DataFrame with 'published_day' and 'vader_compound' columns with a column for each vader statistic for each day
-
+    #    df: DataFrame with 'published_day' and a compound score column
+    #    sentiment: which scorer to aggregate ('vader' or 'finbert')
+    #
+    # Returns:
+    #    DataFrame with one row per day containing:
+    #      article_count, {sentiment}_mean, {sentiment}_std, {sentiment}_median,
+    #      {sentiment}_min, {sentiment}_max, positive_ratio, negative_ratio
 
     df = df.copy()                      # copy df so original isnt modified
 
-    # ensure published_day is string for clean grouping
-    df['published_day'] = pd.to_datetime(df['published_day']).dt.date                   # sometimes there is one that doesnt work correctly
+    compound_col = SENTIMENT_COMPOUND_COL.get(sentiment)
+    if compound_col is None:
+        raise ValueError(f"Unknown sentiment scorer: '{sentiment}'. Use 'vader' or 'finbert'.")
+    
+    if compound_col not in df.columns:
+        raise ValueError(f"Column '{compound_col}' not found in dataframe. "
+                         f"Run {sentiment} scoring before aggregating.")
 
-    print(f"Aggregating sentiment for {df['published_day'].nunique()} unique days...")
+    # prefix for output columns so vader and finbert results dont collide
+    prefix = sentiment
+
+    # ensure published_day is date type for clean grouping
+    df['published_day'] = pd.to_datetime(df['published_day']).dt.date
+
+    print(f"Aggregating {sentiment.upper()} sentiment for {df['published_day'].nunique()} unique days...")
     
     # group by date, calculate stats for the sentiment of articles for that day
-    aggregated_daily_sentiment_df = df.groupby('published_day').agg(
-        article_count=('vader_compound', 'count'),
-        vader_mean=('vader_compound', 'mean'),
-        vader_std=('vader_compound', 'std'),
-        vader_median=('vader_compound', 'median'),
-        vader_min=('vader_compound', 'min'),
-        vader_max=('vader_compound', 'max'),
+    agg = df.groupby('published_day').agg(
+        article_count=(compound_col, 'count'),
+        **{
+            f'{prefix}_mean': (compound_col, 'mean'),
+            f'{prefix}_std': (compound_col, 'std'),
+            f'{prefix}_median': (compound_col, 'median'),
+            f'{prefix}_min': (compound_col, 'min'),
+            f'{prefix}_max': (compound_col, 'max'),
+        }
     ).reset_index()
 
-
-
-    # compute sentiment ratios per day
-    positive_counts = df[df['vader_compound'] > 0.05].groupby('published_day').size()
-    negative_counts = df[df['vader_compound'] < -0.05].groupby('published_day').size()
+    # compute sentiment ratios per day (positive / negative article proportions)
+    positive_counts = df[df[compound_col] > 0.05].groupby('published_day').size()
+    negative_counts = df[df[compound_col] < -0.05].groupby('published_day').size()
     total_counts = df.groupby('published_day').size()
 
-    aggregated_daily_sentiment_df = aggregated_daily_sentiment_df.set_index('published_day')            # set index to be date
+    agg = agg.set_index('published_day')
 
+    agg['positive_ratio'] = (positive_counts / total_counts).fillna(0)        
+    agg['negative_ratio'] = (negative_counts / total_counts).fillna(0)
+    agg = agg.reset_index()
 
-    aggregated_daily_sentiment_df['positive_ratio'] = (positive_counts / total_counts).fillna(0)        
-    aggregated_daily_sentiment_df['negative_ratio'] = (negative_counts / total_counts).fillna(0)
-    aggregated_daily_sentiment_df = aggregated_daily_sentiment_df.reset_index()
-
-    # Error handling - fill NaN strading_day (happens when only 1 article in a day) with 0
-    aggregated_daily_sentiment_df['vader_std'] = aggregated_daily_sentiment_df['vader_std'].fillna(0)
+    # fill NaN std (happens when only 1 article in a day) with 0
+    agg[f'{prefix}_std'] = agg[f'{prefix}_std'].fillna(0)
 
     # sort by date
-    aggregated_daily_sentiment_df = aggregated_daily_sentiment_df.sort_values('published_day').reset_index(drop=True)
+    agg = agg.sort_values('published_day').reset_index(drop=True)
 
-    print(f"  Days with data: {len(aggregated_daily_sentiment_df)}")
-    print(f"  Articles per day: min={aggregated_daily_sentiment_df['article_count'].min()}, "
-          f"max={aggregated_daily_sentiment_df['article_count'].max()}, "
-          f"mean={aggregated_daily_sentiment_df['article_count'].mean():.1f}")
-    print(f"  Mean aggregated_daily_sentiment_df sentiment: {aggregated_daily_sentiment_df['vader_mean'].mean():.4f}")
-    print(f"  Mean sentiment dispersion: {aggregated_daily_sentiment_df['vader_std'].mean():.4f}")
+    print(f"  Days with data: {len(agg)}")
+    print(f"  Articles per day: min={agg['article_count'].min()}, "
+          f"max={agg['article_count'].max()}, "
+          f"mean={agg['article_count'].mean():.1f}")
+    print(f"  Mean daily sentiment: {agg[f'{prefix}_mean'].mean():.4f}")
+    print(f"  Mean sentiment dispersion: {agg[f'{prefix}_std'].mean():.4f}")
 
-    return aggregated_daily_sentiment_df
+    return agg
 
 # merge aggregated_daily_sentiment_df sentiment features with the price data extracted for the ticker
 def merge_with_prices(aggregated_daily_sentiment_df_sentiment: pd.DataFrame,
@@ -127,30 +149,32 @@ def merge_with_prices(aggregated_daily_sentiment_df_sentiment: pd.DataFrame,
 
     return merged
 
-# Combine - aggregate aggregated_daily_sentiment_df sentiment, then combine on price data and return full df
+# Combine - aggregate daily sentiment, then combine on price data and return full df
 def build_feature_matrix(articles_df: pd.DataFrame,
-                         price_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:      #price data optional 
+                         price_df: Optional[pd.DataFrame] = None,
+                         sentiment: str = 'vader') -> pd.DataFrame:
 
 
     # Arguments: articles_df = scored articles dataframe, price_df = optional price data dataframe
+    #            sentiment = which scorer was used ('vader' or 'finbert')
 
-    # Returns: feature matrix with aggregated_daily_sentiment_df vader stats for each trading day + price data for those respective days.
+    # Returns: feature matrix with daily sentiment stats for each trading day + price data for those respective days.
     # Feature matrix to be used in clustering
 
     print(f"\n{'=' * 60}")
-    print("Preparing Feature Matrix...")
+    print(f"Preparing Feature Matrix ({sentiment.upper()})...")
     print(f"{'=' * 60}")
 
-    # step 1: aggregate aggregated_daily_sentiment_df sentiment
-    aggregated_daily_sentiment_df = aggregate_daily_sentiment(articles_df)
+    # step 1: aggregate daily sentiment using the chosen scorer
+    daily_sentiment = aggregate_daily_sentiment(articles_df, sentiment=sentiment)
 
     # step 2: merge with prices if available
     if price_df is not None and not price_df.empty:
         print(f"\nMerging with price data...")
-        feature_matrix = merge_with_prices(aggregated_daily_sentiment_df, price_df)
+        feature_matrix = merge_with_prices(daily_sentiment, price_df)
     else:
         print("\nNo price data provided - only returning sentiment features...")
-        feature_matrix = aggregated_daily_sentiment_df
+        feature_matrix = daily_sentiment
 
 
     # print feature matrix stats for error handling
@@ -170,20 +194,27 @@ if __name__ == "__main__":
     if os.path.exists(articles_csv):
         articles_df = pd.read_csv(articles_csv)
 
-        # check if vader scores exist first 
-        if 'vader_compound' not in articles_df.columns:
-            print("No vader_compound column found - run VADER scoring first")
-        else:
-            price_df = None
-            if os.path.exists(prices_csv):
-                price_df = pd.read_csv(prices_csv, index_col=0, parse_dates=True)
+        price_df = None
+        if os.path.exists(prices_csv):
+            price_df = pd.read_csv(prices_csv, index_col=0, parse_dates=True)
 
-            feature_matrix = build_feature_matrix(articles_df, price_df)            # build feature matrix with dataframes
+        # test VADER aggregation
+        if 'vader_compound' in articles_df.columns:
+            feature_matrix = build_feature_matrix(articles_df, price_df, sentiment='vader')
 
-            # save
             output_path = "data/feature_matrix.csv"
             feature_matrix.to_csv(output_path, index=False)
             print(f"\nFeature matrix saved to {output_path}")
+        else:
+            print("No vader_compound column found - run VADER scoring first")
+
+        # test FinBERT aggregation if available
+        if 'finbert_compound' in articles_df.columns:
+            feature_matrix_fb = build_feature_matrix(articles_df, price_df, sentiment='finbert')
+
+            output_path_fb = "data/feature_matrix_finbert.csv"
+            feature_matrix_fb.to_csv(output_path_fb, index=False)
+            print(f"\nFinBERT feature matrix saved to {output_path_fb}")
     else:
         print(f"Unable to find any articles file found at {articles_csv}")
         print("If this occurs, run the pipeline first with  python pipeline.py --scrape")
