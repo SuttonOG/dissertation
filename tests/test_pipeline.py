@@ -6,6 +6,9 @@
 # test 4 - scoring sentiment - sentiment_vader
 # test 5 - price data test - price_data
 # test 6 - aggregating features - feature_aggregate
+# test 7 - K-Means clustering - clustering_kmeans
+# test 8 - FinBERT feature aggregation - feature_aggregate with finbert
+# test 9 - sentiment-aware clustering - both methods x both scorers
 
 
 import pytest
@@ -173,14 +176,13 @@ class TestPriceData:
     
         
         # should return a daily_return and a log_return from ohlcv data
-        dates = pd.bdate_range(end=datetime.now(), periods=20)
-        close = 100 + np.cumsum(np.random.randn(20) * 0.5)
-        
+        dates = pd.bdate_range(end="2026-03-10", periods=20)
+        close = 100 + np.cumsum(np.random.randn(len(dates)) * 0.5)
         
 
         mock_dl.return_value = pd.DataFrame({
             "Open": close - 0.5, "High": close + 1, "Low": close - 1,
-            "Close": close, "Volume": [10_000_000] * 20,
+            "Close": close, "Volume": [10_000_000] * len(dates),
         }, index=dates)
 
 
@@ -232,3 +234,307 @@ class TestFeatureAggregation:
         # assert cols present
         assert "vader_mean" in matrix.columns
         assert "daily_return" in matrix.columns
+
+
+# test 7 - K-Means clustering
+class TestKMeansClustering:
+
+    # verify K-Means produces cluster labels on a synthetic feature matrix
+    def test_kmeans_assigns_labels(self):
+
+        from analysis.clustering_kmeans import KMeansClusterer
+
+        # build synthetic feature matrix with 20 data points, 2 clear clusters
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'vader_mean': np.concatenate([np.random.normal(0.3, 0.1, 10), np.random.normal(-0.3, 0.1, 10)]),
+            'vader_std': np.random.uniform(0.05, 0.3, 20),
+            'vader_median': np.concatenate([np.random.normal(0.25, 0.1, 10), np.random.normal(-0.25, 0.1, 10)]),
+            'positive_ratio': np.concatenate([np.random.uniform(0.5, 0.8, 10), np.random.uniform(0.1, 0.4, 10)]),
+            'negative_ratio': np.concatenate([np.random.uniform(0.1, 0.3, 10), np.random.uniform(0.4, 0.7, 10)]),
+            'daily_return': np.concatenate([np.random.normal(0.01, 0.005, 10), np.random.normal(-0.01, 0.005, 10)]),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 20),
+        })
+
+        clusterer = KMeansClusterer(n_clusters=2)
+        result = clusterer.fit_predict(df)
+
+        assert 'cluster_label' in result.columns
+        assert 'cluster_probability' in result.columns
+        assert result['cluster_label'].nunique() == 2           # should find exactly 2 clusters
+        assert (result['cluster_label'] >= 0).all()             # no noise points in K-Means
+
+
+    # verify auto k selection works and picks a reasonable k
+    def test_kmeans_auto_k_selection(self):
+
+        from analysis.clustering_kmeans import KMeansClusterer
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'vader_mean': np.concatenate([np.random.normal(0.3, 0.1, 15),
+                                          np.random.normal(-0.3, 0.1, 15),
+                                          np.random.normal(0.0, 0.05, 15)]),
+            'vader_std': np.random.uniform(0.05, 0.3, 45),
+            'daily_return': np.concatenate([np.random.normal(0.01, 0.005, 15),
+                                            np.random.normal(-0.01, 0.005, 15),
+                                            np.random.normal(0.0, 0.003, 15)]),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 45),
+        })
+
+        clusterer = KMeansClusterer(n_clusters=None, max_k=6)
+        result = clusterer.fit_predict(df)
+
+        assert clusterer.best_k_ is not None
+        assert 2 <= clusterer.best_k_ <= 6
+        assert len(clusterer.silhouette_scores_) > 0
+        assert len(clusterer.inertias_) > 0
+
+
+    # verify get_cluster_profiles returns correct structure
+    def test_kmeans_cluster_profiles(self):
+
+        from analysis.clustering_kmeans import KMeansClusterer
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'vader_mean': np.random.normal(0.0, 0.2, 20),
+            'vader_std': np.random.uniform(0.05, 0.3, 20),
+            'daily_return': np.random.normal(0.0, 0.01, 20),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 20),
+        })
+
+        clusterer = KMeansClusterer(n_clusters=2)
+        result = clusterer.fit_predict(df)
+        profiles = clusterer.get_cluster_profiles(result)
+
+        assert not profiles.empty
+        assert 'day_count' in profiles.columns
+        assert len(profiles) == 2               # one row per cluster
+
+
+    # verify evaluation metrics are computed
+    def test_kmeans_evaluation_metrics(self):
+
+        from analysis.clustering_kmeans import KMeansClusterer
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'vader_mean': np.random.normal(0.0, 0.2, 30),
+            'vader_std': np.random.uniform(0.05, 0.3, 30),
+            'daily_return': np.random.normal(0.0, 0.01, 30),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 30),
+        })
+
+        clusterer = KMeansClusterer(n_clusters=3)
+        clusterer.fit_predict(df)
+
+        assert 'silhouette' in clusterer.evaluation_metrics_
+        assert 'calinski_harabasz' in clusterer.evaluation_metrics_
+        assert 'davies_bouldin' in clusterer.evaluation_metrics_
+        assert 'inertia' in clusterer.evaluation_metrics_
+        assert -1 <= clusterer.evaluation_metrics_['silhouette'] <= 1
+
+
+# test 8 - FinBERT feature aggregation
+class TestFinBERTAggregation:
+
+    # verify aggregate_daily_sentiment works with finbert compound column
+    def test_finbert_aggregation_produces_correct_columns(self):
+
+        df = pd.DataFrame({
+            "published_day": ["2026-03-10", "2026-03-10", "2026-03-09"],
+            "finbert_compound": [0.6, 0.4, -0.3],
+        })
+        agg = aggregate_daily_sentiment(df, sentiment='finbert')
+
+        assert len(agg) == 2
+        assert "finbert_mean" in agg.columns
+        assert "finbert_std" in agg.columns
+        assert "finbert_median" in agg.columns
+        assert "article_count" in agg.columns
+        assert "positive_ratio" in agg.columns
+        assert "negative_ratio" in agg.columns
+
+        # vader columns should NOT be present
+        assert "vader_mean" not in agg.columns
+
+
+    # verify finbert aggregation computes correct values
+    def test_finbert_aggregation_correct_values(self):
+
+        df = pd.DataFrame({
+            "published_day": ["2026-03-10", "2026-03-10"],
+            "finbert_compound": [0.6, 0.4],
+        })
+        agg = aggregate_daily_sentiment(df, sentiment='finbert')
+
+        assert len(agg) == 1
+        assert abs(agg['finbert_mean'].iloc[0] - 0.5) < 0.001          # mean of 0.6 and 0.4
+
+
+    # verify build_feature_matrix works with finbert sentiment
+    def test_build_feature_matrix_finbert(self, sample_price_df):
+
+        df = pd.DataFrame({
+            "published_day": ["2026-03-09", "2026-03-10"],
+            "finbert_compound": [0.4, -0.1],
+        })
+        matrix = build_feature_matrix(df, sample_price_df, sentiment='finbert')
+
+        assert "finbert_mean" in matrix.columns
+        assert "daily_return" in matrix.columns
+        assert "vader_mean" not in matrix.columns
+
+
+    # verify error raised when compound column missing
+    def test_aggregation_raises_on_missing_column(self):
+
+        df = pd.DataFrame({
+            "published_day": ["2026-03-10"],
+            "vader_compound": [0.5],           # only vader present
+        })
+
+        with pytest.raises(ValueError, match="finbert_compound"):
+            aggregate_daily_sentiment(df, sentiment='finbert')
+
+
+    # verify unknown sentiment scorer raises error
+    def test_aggregation_raises_on_unknown_sentiment(self):
+
+        df = pd.DataFrame({
+            "published_day": ["2026-03-10"],
+            "vader_compound": [0.5],
+        })
+
+        with pytest.raises(ValueError, match="Unknown sentiment"):
+            aggregate_daily_sentiment(df, sentiment='unknown_scorer')
+
+
+# test 9 - sentiment-aware clustering (both methods x both scorers)
+class TestSentimentAwareClustering:
+
+    # verify run_clustering with method='kmeans' and sentiment='vader'
+    def test_run_clustering_kmeans_vader(self):
+
+        from analysis.clustering import run_clustering
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'vader_mean': np.random.normal(0.0, 0.2, 20),
+            'vader_std': np.random.uniform(0.05, 0.3, 20),
+            'daily_return': np.random.normal(0.0, 0.01, 20),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 20),
+        })
+
+        result, clusterer = run_clustering(df, method='kmeans', n_clusters=2, sentiment='vader')
+
+        assert 'cluster_label' in result.columns
+        assert result['cluster_label'].nunique() == 2
+        assert 'vader_mean' in clusterer.features
+
+
+    # verify run_clustering with method='kmeans' and sentiment='finbert'
+    def test_run_clustering_kmeans_finbert(self):
+
+        from analysis.clustering import run_clustering
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'finbert_mean': np.random.normal(0.0, 0.2, 20),
+            'finbert_std': np.random.uniform(0.05, 0.3, 20),
+            'finbert_median': np.random.normal(0.0, 0.15, 20),
+            'positive_ratio': np.random.uniform(0.2, 0.7, 20),
+            'negative_ratio': np.random.uniform(0.1, 0.5, 20),
+            'daily_return': np.random.normal(0.0, 0.01, 20),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 20),
+        })
+
+        result, clusterer = run_clustering(df, method='kmeans', n_clusters=2, sentiment='finbert')
+
+        assert 'cluster_label' in result.columns
+        assert result['cluster_label'].nunique() == 2
+        assert 'finbert_mean' in clusterer.features
+        assert 'vader_mean' not in clusterer.features
+
+
+    # verify run_clustering with method='hdbscan' and sentiment='finbert'
+    def test_run_clustering_hdbscan_finbert(self):
+
+        from analysis.clustering import run_clustering
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'finbert_mean': np.concatenate([np.random.normal(0.4, 0.05, 15), np.random.normal(-0.3, 0.05, 15)]),
+            'finbert_std': np.random.uniform(0.05, 0.2, 30),
+            'finbert_median': np.concatenate([np.random.normal(0.35, 0.05, 15), np.random.normal(-0.25, 0.05, 15)]),
+            'positive_ratio': np.concatenate([np.random.uniform(0.6, 0.9, 15), np.random.uniform(0.1, 0.3, 15)]),
+            'negative_ratio': np.concatenate([np.random.uniform(0.05, 0.2, 15), np.random.uniform(0.5, 0.8, 15)]),
+            'daily_return': np.concatenate([np.random.normal(0.01, 0.003, 15), np.random.normal(-0.01, 0.003, 15)]),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.015, 30),
+        })
+
+        result, clusterer = run_clustering(df, min_cluster_size=3, min_samples=2, method='hdbscan', sentiment='finbert')
+
+        assert 'cluster_label' in result.columns
+        assert 'finbert_mean' in clusterer.features
+        assert 'vader_mean' not in clusterer.features
+
+
+    # verify that finbert clusterer ignores vader columns even if present
+    def test_finbert_clustering_ignores_vader_columns(self):
+
+        from analysis.clustering_kmeans import KMeansClusterer
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            # both vader and finbert columns present
+            'vader_mean': np.random.normal(0.0, 0.2, 20),
+            'finbert_mean': np.random.normal(0.1, 0.2, 20),
+            'vader_std': np.random.uniform(0.05, 0.3, 20),
+            'finbert_std': np.random.uniform(0.05, 0.3, 20),
+            'finbert_median': np.random.normal(0.05, 0.15, 20),
+            'positive_ratio': np.random.uniform(0.2, 0.7, 20),
+            'negative_ratio': np.random.uniform(0.1, 0.5, 20),
+            'daily_return': np.random.normal(0.0, 0.01, 20),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 20),
+        })
+
+        clusterer = KMeansClusterer(n_clusters=2, sentiment='finbert')
+        result = clusterer.fit_predict(df)
+
+        # should use finbert features, not vader
+        assert 'finbert_mean' in clusterer.features
+        assert 'vader_mean' not in clusterer.features
+        assert result['cluster_label'].nunique() == 2
+
+
+    # verify backward compatibility - no sentiment arg defaults to vader
+    def test_default_sentiment_is_vader(self):
+
+        from analysis.clustering import run_clustering
+
+        np.random.seed(42)
+        df = pd.DataFrame({
+            'vader_mean': np.random.normal(0.0, 0.2, 20),
+            'vader_std': np.random.uniform(0.05, 0.3, 20),
+            'daily_return': np.random.normal(0.0, 0.01, 20),
+            'realised_volatility_5d': np.random.uniform(0.005, 0.02, 20),
+        })
+
+        # no sentiment arg passed - should default to vader
+        result, clusterer = run_clustering(df, method='kmeans', n_clusters=2)
+
+        assert 'vader_mean' in clusterer.features
+        assert clusterer.sentiment == 'vader'
+
+
+    # verify invalid method raises ValueError
+    def test_invalid_method_raises_error(self):
+
+        from analysis.clustering import run_clustering
+
+        df = pd.DataFrame({'vader_mean': [0.1], 'daily_return': [0.01]})
+
+        with pytest.raises(ValueError, match="Unknown clustering method"):
+            run_clustering(df, method='invalid_method')

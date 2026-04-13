@@ -17,7 +17,7 @@ class FinBertScorer:
     """
     
     def __init__(self):
-        """Load the FinBERT model (downloads ~420MB first time)."""
+        # load finbert model when needed, as large download
         print("Loading FinBERT model...")
         self.classifier = pipeline(
             "sentiment-analysis",
