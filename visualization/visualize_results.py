@@ -1,6 +1,6 @@
 # visualise_results.py - generates all the charts for the demo + dissertation
 # uses matplotlib and seaborn to make the plots look decent
-# saves everything to an output folder so we can use them in the report later
+# saves everything to an output folder so can use them in the report later
 
 import pandas as pd
 import numpy as np
@@ -24,11 +24,12 @@ plt.rcParams.update({
 
 def plot_sentiment_over_time(df: pd.DataFrame, ticker: str = "",
                               output_dir: str = "output/charts"):
-    """
-    plots the daily average sentiment score over time
-    shows the general trend of how positive/negative the news has been
-    this is probably the most important chart for the demo tbh
-    """
+    
+    # plot daily avg sentiment over time
+    # show general trend of positive / mehgative news over time
+    # 
+
+
     os.makedirs(output_dir, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(14, 6))
@@ -36,15 +37,20 @@ def plot_sentiment_over_time(df: pd.DataFrame, ticker: str = "",
     dates = pd.to_datetime(df['published_day'])
     sentiment = df['vader_mean']
 
+
+
     # plot the line
     ax.plot(dates, sentiment, color='#2196F3', linewidth=1.5, marker='o',
             markersize=4, label='Daily mean sentiment', zorder=3)
+
+
 
     # fill above/below zero to make it visually obvious whats positive vs negative
     ax.fill_between(dates, sentiment, 0,
                     where=(sentiment >= 0), color='#4CAF50', alpha=0.15, label='Positive')
     ax.fill_between(dates, sentiment, 0,
                     where=(sentiment < 0), color='#F44336', alpha=0.15, label='Negative')
+
 
     # zero line for reference
     ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
@@ -66,11 +72,10 @@ def plot_sentiment_over_time(df: pd.DataFrame, ticker: str = "",
 
 def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
                                output_dir: str = "output/charts"):
-    """
-    scatter plot of sentiment vs next-day stock returns
-    this is the key relationship we're investigating in the dissertation
-    if theres a correlation here, thats basically the main finding
-    """
+    
+    # scatter plot of senrtiment vs next-day stock returns
+    # key relationship for investigation, if correlation -> main finding
+
     os.makedirs(output_dir, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -81,6 +86,8 @@ def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
     # colour points by whether return was positive or negative
     colours = ['#4CAF50' if r >= 0 else '#F44336' for r in y]
     ax.scatter(x, y, c=colours, alpha=0.6, edgecolors='white', linewidth=0.5, s=60)
+
+
 
     # add a trend line to see if theres any relationship
     # using numpy polyfit for a simple linear fit
@@ -101,6 +108,8 @@ def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
     ax.axhline(y=0, color='gray', linestyle=':', linewidth=0.8)
     ax.axvline(x=0, color='gray', linestyle=':', linewidth=0.8)
 
+
+
     ax.set_xlabel('Mean Daily Sentiment (VADER)')
     ax.set_ylabel('Daily Stock Return')
     ax.set_title(f'Sentiment vs Daily Returns{" - " + ticker if ticker else ""}')
@@ -114,17 +123,19 @@ def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
     return path
 
 
+
+
 def plot_cluster_scatter(df: pd.DataFrame, ticker: str = "",
                           output_dir: str = "output/charts"):
     
-    
-    """
-    scatter plot showing the clusters - colour coded by cluster label
-    uses sentiment on x axis and returns on y axis
-    this is the main visual for showing what the clustering actually found
-    noise points (cluster -1) shown in gray
-    """
+    # scatter plot to show clusters - colour coded by cluster label 
+    # x axis = sentiment, y azis = returns
+    # main visual to show clustering findings 
+    # noise points = cluster -1 (grey)
+   
+
     os.makedirs(output_dir, exist_ok=True)
+    
 
     if 'cluster_label' not in df.columns:
         print("  skipping cluster scatter - no cluster_label column found")
@@ -168,18 +179,19 @@ def plot_cluster_scatter(df: pd.DataFrame, ticker: str = "",
     return path
 
 
+
 def plot_cluster_profiles(df: pd.DataFrame, ticker: str = "",
                            output_dir: str = "output/charts"):
-    """
-    bar chart comparing the key metrics across clusters
-    makes it easy to see what each cluster "means"
-    e.g. cluster 0 = positive sentiment + low vol, cluster 1 = negative + high vol
-    """
+    
+    # bar chart comparing key metrics across clusters 
+    # makes easy to see what a clusters characteristics are e.g cluster 0 = positive sentiment + low vow, cluster 1 = negative + high vol
+
     os.makedirs(output_dir, exist_ok=True)
 
     if 'cluster_label' not in df.columns:
         print("  skipping cluster profiles - no cluster_label column found")
         return None
+
 
     # only use actual clusters, not noise
     clustered = df[df['cluster_label'] >= 0]
@@ -187,7 +199,7 @@ def plot_cluster_profiles(df: pd.DataFrame, ticker: str = "",
         print("  no clusters to profile")
         return None
 
-    # metrics we want to compare across clusters
+    # metrics to compare across clusters
     metrics = ['vader_mean', 'daily_return', 'realised_volatility_5d', 'positive_ratio']
     available = [m for m in metrics if m in clustered.columns]
 
@@ -231,13 +243,14 @@ def plot_cluster_profiles(df: pd.DataFrame, ticker: str = "",
     return path
 
 
+
 def plot_sentiment_distribution(articles_df: pd.DataFrame, ticker: str = "",
                                  output_dir: str = "output/charts"):
-    """
-    histogram of individual article sentiment scores
-    shows the overall distribution - most financial news tends to be slightly positive
-    good for the methodology section of the dissertation
-    """
+    
+    # histogram of individual article sentiment scores
+    # shows overall distribution -> most tends to be positive for financial news
+    # good for methodol sect
+
     os.makedirs(output_dir, exist_ok=True)
 
     if 'vader_compound' not in articles_df.columns:
@@ -270,10 +283,10 @@ def generate_all_charts(feature_matrix: pd.DataFrame,
                         articles_df: Optional[pd.DataFrame] = None,
                         ticker: str = "",
                         output_dir: str = "output/charts"):
-    """
-    convenience function to generate all charts at once
-    call this from the pipeline and it does everything
-    """
+    
+    # func to generate all charts at once 
+
+
     print(f"\n{'=' * 50}")
     print("GENERATING VISUALISATIONS")
     print(f"{'=' * 50}")
@@ -287,7 +300,7 @@ def generate_all_charts(feature_matrix: pd.DataFrame,
         if path:
             generated.append(path)
 
-    # 2. sentiment vs returns (the key relationship)
+    # 2. sentiment vs returns ( key relationship)
     if 'vader_mean' in feature_matrix.columns and 'daily_return' in feature_matrix.columns:
         path = plot_sentiment_vs_returns(feature_matrix, ticker, output_dir)
         if path:
@@ -314,7 +327,11 @@ def generate_all_charts(feature_matrix: pd.DataFrame,
     return generated
 
 
-# quick test - loads existing data and generates charts
+
+
+
+
+# quick test using existing data
 if __name__ == "__main__":
     # try loading from previous pipeline runs
     feature_path = "data/feature_matrix.csv"

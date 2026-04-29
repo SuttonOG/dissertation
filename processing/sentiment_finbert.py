@@ -11,10 +11,7 @@ from transformers import pipeline
 
 
 class FinBertScorer:
-    """
-    FinBERT sentiment scorer using HuggingFace pipeline.
-    Same interface as VaderScorer.
-    """
+
     
     def __init__(self):
         # load finbert model when needed, as large download
@@ -150,4 +147,4 @@ if __name__ == "__main__":
         print(f"\nSample scored articles:")
         print("-" * 60)
         for _, row in scored_df.head(10).iterrows():
-            print(f"  [{row['finbert_compound']:+.4f}] ({row['finbert_source']}) {row['title'][:70]}")``
+            print(f"  [{row['finbert_compound']:+.4f}] ({row['finbert_source']}) {row['title'][:70]}")

@@ -1,8 +1,11 @@
+
+
+
 # clustering_kmeans.py - K-Means clustering on the feature matrix
 # baseline comparison model for the dissertation
-# unlike HDBSCAN, K-Means requires specifying k upfront
+# unlike HDBSCAN ---> K-Means requires specifying k upfront
 # uses elbow method + silhouette scores to find optimal k
-# same interface as SentimentClusterer for easy swapping in the pipeline
+# same interface as SentimentClusterer -> easy to swap in pipe
 
 import pandas as pd
 import numpy as np
@@ -54,14 +57,16 @@ class KMeansClusterer:
                  random_state: int = 42,
                  features: Optional[List[str]] = None,
                  sentiment: str = 'vader'):
-        """
-        n_clusters: number of clusters (k). If None, auto-selects best k
-                    using silhouette score over range 2..max_k
-        max_k: upper bound for k search when n_clusters is None
-        random_state: seed for reproducibility
-        features: which columns to cluster on. If None, auto-selects based on sentiment param
-        sentiment: which scorer was used ('vader' or 'finbert'), determines default features
-        """
+        
+        # Args:
+        # n clusters = no. clusters (k value). If none -> auto select best k
+        # max_k = upper bound for k search if n_clusters = None
+        # random_state = seed used for randomness
+        # features = clustering cols if None -> select based on which sentiment param passed
+        # sentiment = vader/finbert -> determines the default features
+
+
+
         self.n_clusters = n_clusters
         self.max_k = max_k
         self.random_state = random_state
@@ -71,6 +76,8 @@ class KMeansClusterer:
         self.model = None
         self.fitted = False
 
+
+
         # store evaluation metrics after fitting
         self.inertias_ = {}             # SSE for each k tested (for elbow plot)
         self.silhouette_scores_ = {}    # silhouette score for each k tested
@@ -79,11 +86,13 @@ class KMeansClusterer:
 
 
     def _find_optimal_k(self, X_scaled: np.ndarray) -> int:
-        """Find the best k using silhouette score.
-        
-        Tests k from 2 to max_k, returns the k with highest silhouette score.
-        Also stores inertia values for elbow plot visualisation.
-        """
+
+        # find best k via silhouette score
+
+        # tests k from 2 -> max_k -> return k with highest silhouette score (most optimal)
+
+        # store inertia values for an elbow plot visual to use
+
         print(f"  Auto-selecting k (testing k=2..{self.max_k})...")
 
         best_k = 2
@@ -186,12 +195,16 @@ class KMeansClusterer:
         )
         labels = self.model.fit_predict(X_scaled)
 
+
+
         # compute cluster probability as inverse normalised distance to centroid
         # so it matches HDBSCAN output format (higher = more confident assignment)
         distances = self.model.transform(X_scaled)            # distance to each centroid
         assigned_distances = distances[np.arange(len(labels)), labels]   # distance to assigned centroid
         max_dist = assigned_distances.max() if assigned_distances.max() > 0 else 1.0
         probabilities = 1.0 - (assigned_distances / max_dist)
+
+
 
         # compute evaluation metrics for final model
         self.evaluation_metrics_ = {
@@ -201,8 +214,9 @@ class KMeansClusterer:
             'inertia': self.model.inertia_,
         }
 
+
+
         # add results back to dataframe
-        # K-Means assigns every point, but NaN rows still get -1 for consistency
         df['cluster_label'] = -1
         df['cluster_probability'] = 0.0
         df.loc[valid_mask, 'cluster_label'] = labels
@@ -216,9 +230,12 @@ class KMeansClusterer:
 
 
     def _print_summary(self, df: pd.DataFrame):
-        """Print clustering results summary - same format as HDBSCAN for comparison."""
+
+        # print clustering results summary - uses same format as HDBSCAN for a comparison
+  
 
         n_clusters = df[df['cluster_label'] >= 0]['cluster_label'].nunique()
+
         noise_count = (df['cluster_label'] == -1).sum()
         total = len(df)
 
@@ -228,6 +245,8 @@ class KMeansClusterer:
         print(f"  k (clusters): {n_clusters}")
         print(f"  unassigned:   {noise_count}/{total} ({100*noise_count/total:.0f}%)")
 
+
+
         # print evaluation metrics
         if self.evaluation_metrics_:
             print(f"\n  Evaluation metrics:")
@@ -235,6 +254,9 @@ class KMeansClusterer:
             print(f"    calinski-harabasz:      {self.evaluation_metrics_['calinski_harabasz']:.2f}")
             print(f"    davies-bouldin:         {self.evaluation_metrics_['davies_bouldin']:.4f}")
             print(f"    inertia (SSE):          {self.evaluation_metrics_['inertia']:.2f}")
+
+
+
 
         # show each cluster's characteristics
         for label in sorted(df['cluster_label'].unique()):
@@ -254,17 +276,21 @@ class KMeansClusterer:
                 print(f"    pos/neg ratio:  {cluster_df['positive_ratio'].mean():.2f} / {cluster_df['negative_ratio'].mean():.2f}")
 
 
+
+
     def get_cluster_profiles(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Build summary table of each cluster's characteristics.
-        
-        Same interface as SentimentClusterer.get_cluster_profiles().
-        """
+
+        # build summary table of each clusters characteristics
+        # same interface as sentimentclusterer
+
+        # error case - no cluster labels found
         if 'cluster_label' not in df.columns:
             print("no cluster labels found - run fit_predict first")
             return pd.DataFrame()
 
         clustered = df[df['cluster_label'] >= 0].copy()
 
+        # error case - no clusters found
         if clustered.empty:
             print("no clusters found")
             return pd.DataFrame()
@@ -303,6 +329,14 @@ def run_kmeans_clustering(feature_matrix: pd.DataFrame,
     return result, clusterer
 
 
+
+
+
+
+
+
+
+
 # testing block
 if __name__ == "__main__":
     import os
@@ -313,11 +347,14 @@ if __name__ == "__main__":
         print(f"Loading feature matrix from {test_path}")
         df = pd.read_csv(test_path)
 
+
+
         # test 1: auto k selection
         print("\n" + "=" * 60)
         print("TEST 1: Auto k selection")
         print("=" * 60)
         result, clusterer = run_kmeans_clustering(df, max_k=6)
+
 
         output_path = "data/clustered_kmeans.csv"
         result.to_csv(output_path, index=False)
@@ -327,6 +364,9 @@ if __name__ == "__main__":
         if not profiles.empty:
             print(f"\n{profiles.to_string()}")
 
+
+
+
         # test 2: fixed k=3
         print("\n" + "=" * 60)
         print("TEST 2: Fixed k=3")
@@ -335,6 +375,8 @@ if __name__ == "__main__":
         profiles2 = clusterer2.get_cluster_profiles(result2)
         if not profiles2.empty:
             print(f"\n{profiles2.to_string()}")
+
+
 
     else:
         print(f"no feature matrix found at {test_path}")

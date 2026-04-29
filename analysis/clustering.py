@@ -1,3 +1,6 @@
+
+
+
 # clustering.py - runs HDBSCAN clustering on the feature matrix
 # basically groups trading days into "regimes" based on sentiment + price behaviour
 # e.g. a cluster might be "high negative sentiment + high volatility" days
@@ -127,6 +130,7 @@ class SentimentClusterer:
         return df
 
     def _print_summary(self, df: pd.DataFrame):
+        
         """prints out what the clustering found - useful for debugging and demo"""
 
         n_clusters = df[df['cluster_label'] >= 0]['cluster_label'].nunique()
@@ -207,12 +211,32 @@ def run_clustering(feature_matrix: pd.DataFrame,
     # n_clusters for k-means no. clusters
 
 
+
+     # UPDATED for each model
     # k means method
     if method == 'kmeans':
         from analysis.clustering_kmeans import KMeansClusterer
         clusterer = KMeansClusterer(
             n_clusters=n_clusters,
             max_k=max_k,
+            random_state=random_state,
+            sentiment=sentiment,
+        )
+    # gmm method
+    elif method == 'gmm':
+        from analysis.clustering_gmm import GMMClusterer
+        clusterer = GMMClusterer(
+            n_components=n_clusters,       # reuse n_clusters param for n_components
+            max_k=max_k,
+            random_state=random_state,
+            sentiment=sentiment,
+        )
+    # hmm method
+    elif method == 'hmm':
+        from analysis.clustering_hmm import HMMClusterer
+        clusterer = HMMClusterer(
+            n_components=n_clusters,       # reuse n_clusters param for n_components
+            max_states=max_k,              # reuse max_k for max_states
             random_state=random_state,
             sentiment=sentiment,
         )
@@ -224,10 +248,19 @@ def run_clustering(feature_matrix: pd.DataFrame,
             sentiment=sentiment,
         )
     else:
-        raise ValueError(f"Unknown clustering method: '{method}'. Use 'hdbscan' or 'kmeans'.")
+        raise ValueError(f"Unknown clustering method: '{method}'. Use 'hdbscan', 'kmeans', 'gmm', or 'hmm'.")
 
     result = clusterer.fit_predict(feature_matrix)
     return result, clusterer
+
+
+
+
+
+
+
+
+
 
 
 # testing block
