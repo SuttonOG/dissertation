@@ -132,6 +132,22 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
             n_clusters=n_clusters,
             sentiment=sentiment,
         )
+    elif cluster_method == 'gmm':
+        print(f"  n_components={'auto (BIC)' if n_clusters is None else n_clusters}")
+        feature_matrix, clusterer = run_clustering(
+            feature_matrix,
+            method='gmm',
+            n_clusters=n_clusters,
+            sentiment=sentiment,
+        )
+    elif cluster_method == 'hmm':
+        print(f"  n_states={'auto (BIC)' if n_clusters is None else n_clusters}")
+        feature_matrix, clusterer = run_clustering(
+            feature_matrix,
+            method='hmm',
+            n_clusters=n_clusters,
+            sentiment=sentiment,
+        )
     else:
         print(f"  Unknown method '{cluster_method}', falling back to HDBSCAN")
         feature_matrix, clusterer = run_clustering(
@@ -144,6 +160,12 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
 
     # get cluster profiles for the summary
     profiles = clusterer.get_cluster_profiles(feature_matrix)
+
+    # Step 8b: Statistical validation
+    # tests whether the clusters actually have different return/volatility behaviour
+    print(f"\n--- Step 8b: Statistical Validation ---")
+    from analysis.statistical_validation import validate_clusters, save_validation_report
+    validation_results = validate_clusters(feature_matrix)
 
     # Step 9: Generate visualisations
     print(f"\n--- Step 9: Generating visualisations ---")
@@ -175,6 +197,25 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
         profiles_path = os.path.join(output_dir, f"cluster_profiles_{ticker}_{days_back}d.csv")
         profiles.to_csv(profiles_path)
         print(f"  Cluster profiles saved: {profiles_path}")
+
+    # save validation report
+    if validation_results:
+        validation_path = os.path.join(output_dir, f"validation_{ticker}_{days_back}d.csv")
+        save_validation_report(validation_results, validation_path)
+
+    # save HMM-specific outputs if we used HMM
+    if cluster_method == 'hmm' and hasattr(clusterer, 'get_transition_matrix'):
+        trans_matrix = clusterer.get_transition_matrix()
+        if trans_matrix is not None:
+            trans_path = os.path.join(output_dir, f"transition_matrix_{ticker}_{days_back}d.csv")
+            trans_matrix.to_csv(trans_path)
+            print(f"  Transition matrix saved: {trans_path}")
+
+        durations = clusterer.get_expected_durations()
+        if durations is not None:
+            dur_path = os.path.join(output_dir, f"regime_durations_{ticker}_{days_back}d.csv")
+            durations.to_csv(dur_path, index=False)
+            print(f"  Regime durations saved: {dur_path}")
 
     # print summary to console
     time_taken = time.time() - start_time
@@ -216,10 +257,10 @@ if __name__ == "__main__":
         parser.add_argument("--scrape", action="store_true", help="Enable content scraping (off by default)")
         parser.add_argument("--output-dir", type=str, default="data", help="Output directory (default: data)")
         parser.add_argument("--rss", action="store_true", help="Enable RSS feed extraction")
-        parser.add_argument("--method", type=str, default="hdbscan", choices=["hdbscan", "kmeans"],
+        parser.add_argument("--method", type=str, default="hdbscan", choices=["hdbscan", "kmeans", "gmm", "hmm"],
                             help="Clustering method (default: hdbscan)")
         parser.add_argument("--k", type=int, default=None,
-                            help="Number of clusters for K-Means (default: auto-select)")
+                            help="Number of clusters/components/states (default: auto-select)")
         parser.add_argument("--sentiment", type=str, default="vader", choices=["vader", "finbert"],
                             help="Sentiment scorer to use (default: vader)")
 
