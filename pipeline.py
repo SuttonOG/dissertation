@@ -143,6 +143,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
 
     print(f"\n--- Step 8: Clustering ({cluster_method.upper()}) ---")
 
+    # for each algorithm run the clustering
     if cluster_method == 'hdbscan':
         print(f"  using min_cluster_size={min_cs} for {len(feature_matrix)} data points")
         feature_matrix, clusterer = run_clustering(
@@ -189,7 +190,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     # get cluster profiles for the summary
     profiles = clusterer.get_cluster_profiles(feature_matrix)
 
-    # Step 8b: Statistical validation
+    # Step 8 part 2: Statistical validation
     # tests whether the clusters actually have different return/volatility behaviour
     
     
@@ -198,18 +199,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     validation_results = validate_clusters(feature_matrix)
 
 
-    # Step 9: Generate visualisations
-    print(f"\n--- Step 9: Generating visualisations ---")
-    chart_dir = os.path.join(output_dir, "charts")
-    generate_all_charts(
-        feature_matrix=feature_matrix,
-        articles_df=df,
-        ticker=ticker,
-        output_dir=chart_dir,
-        sentiment=sentiment,
-    )
-
-    # Step 10: Save everything
+    # Step 9: Save everything
     print(f"\n--- Step 10: Saving outputs ---")
 
 
@@ -247,7 +237,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
 
 
 
-    # save HMM-specific outputs if we used HMM
+    # save HMM-specific outputs if used HMM
     if cluster_method == 'hmm' and hasattr(clusterer, 'get_transition_matrix'):
         trans_matrix = clusterer.get_transition_matrix()
         if trans_matrix is not None:
@@ -278,7 +268,7 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
 
 
 
-
+    # print output stats to terminal for investigation
     print(f"  Price days:     {len(price_df) if price_df is not None else 0}")
     print(f"  Feature days:   {len(feature_matrix)}")
 
@@ -286,7 +276,9 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
 
     print(f"  Clusters found: {n_clusters}")
 
-    print(f"  Charts:         saved to {os.path.abspath(chart_dir)}")
+
+
+
 
     print(f"  Duration:       {time_taken:.1f} seconds")
 
