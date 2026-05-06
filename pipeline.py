@@ -33,6 +33,8 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
         # 10. Save everything
 
 
+
+
     os.makedirs(output_dir, exist_ok=True)
     start_time = time.time()
     print("*" * 60)
@@ -53,6 +55,10 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     print(f"GDELT Article Count: {len(gdelt_articles)}")
 
 
+
+
+
+
     # Step 2: RSS feed extractor - may comment out for now
     rss_articles = []
     if enable_rss:
@@ -63,15 +69,26 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     else:
          print(f"\n RSS Feed Extraction disabled - Skipping....")
 
+
+
+
+
+
     # Step 3: Combine the extracted articles and deduplicate 
     print(f"\n --- Step 3: Combine extracted articles and deduplicate them ---")
     all_articles = gdelt_articles + rss_articles
     print(f"Total before duplicates removed: {len(all_articles)}")
 
+
+
     df = convert_articles_to_dataframe(all_articles)
     if df is None or df.empty:
         print("ERROR: No articles were collected. Exiting pipeline....")
         return
+
+
+
+
 
     # Step 4 - scrape content from articles extracted from GDELT (body etc)
     if scrape:
@@ -89,6 +106,8 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     else:
         print(f"\n--- Step 4: Scraping SKIPPED ---")           # skip if scraping set to 0
 
+
+
     # Step 5: Sentiment scoring (VADER or FinBERT)
     print(f"\n--- Step 5: {sentiment.upper()} Sentiment Scoring ---")
     if sentiment == 'finbert':
@@ -99,13 +118,22 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
         vader = VaderScorer()
         df = vader.score_dataframe(df)
     
+
+
     # Step 6: Extract Price data for ticker (price_data)
     print(f"\n--- Step 6: Fetching price data ---")
     price_df = get_price_extracted_data(ticker=ticker, days_back=days_back)
 
+
+
+
+
     # Step 7: Build feature matrix (aggregate daily sentiment + merge with prices)
     print(f"\n--- Step 7: Building feature matrix ({sentiment.upper()}) ---")
     feature_matrix = build_feature_matrix(df, price_df, sentiment=sentiment)
+
+
+
 
     # Step 8: Clustering
     # adjust min_cluster_size based on how much data we have
@@ -163,9 +191,12 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
 
     # Step 8b: Statistical validation
     # tests whether the clusters actually have different return/volatility behaviour
+    
+    
     print(f"\n--- Step 8b: Statistical Validation ---")
     from analysis.statistical_validation import validate_clusters, save_validation_report
     validation_results = validate_clusters(feature_matrix)
+
 
     # Step 9: Generate visualisations
     print(f"\n--- Step 9: Generating visualisations ---")
@@ -174,34 +205,47 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
         feature_matrix=feature_matrix,
         articles_df=df,
         ticker=ticker,
-        output_dir=chart_dir
+        output_dir=chart_dir,
+        sentiment=sentiment,
     )
 
     # Step 10: Save everything
     print(f"\n--- Step 10: Saving outputs ---")
 
+
+
     articles_path = os.path.join(output_dir, f"articles_{ticker}_{days_back}d.csv")
     df.to_csv(articles_path, index=False)
     print(f"  Articles saved: {articles_path}")
+
+
 
     if price_df is not None:
         price_path = os.path.join(output_dir, f"prices_{ticker}_{days_back}d.csv")
         price_df.to_csv(price_path)
         print(f"  Prices saved: {price_path}")
 
+
+
     feature_path = os.path.join(output_dir, f"features_{ticker}_{days_back}d.csv")
     feature_matrix.to_csv(feature_path, index=False)
     print(f"  Feature matrix saved: {feature_path}")
+
+
 
     if not profiles.empty:
         profiles_path = os.path.join(output_dir, f"cluster_profiles_{ticker}_{days_back}d.csv")
         profiles.to_csv(profiles_path)
         print(f"  Cluster profiles saved: {profiles_path}")
 
+
+
     # save validation report
     if validation_results:
         validation_path = os.path.join(output_dir, f"validation_{ticker}_{days_back}d.csv")
         save_validation_report(validation_results, validation_path)
+
+
 
     # save HMM-specific outputs if we used HMM
     if cluster_method == 'hmm' and hasattr(clusterer, 'get_transition_matrix'):
@@ -221,13 +265,18 @@ def run_pipeline(ticker: str = "NVDA", days_back: int = 2, max_records_per_day: 
     time_taken = time.time() - start_time
     print(f"\n{'=' * 60}")
     print(f"PIPELINE IS NOW     COMPLETE")
+
     print(f"  Ticker:         {ticker}")
     print(f"  Sentiment:      {sentiment.upper()}")
     print(f"  Cluster method: {cluster_method.upper()}")
     print(f"  Articles:       {len(df)}")
 
+
+
     if 'content' in df.columns:
         print(f"  With content:   {df['content'].notna().sum()}")
+
+
 
 
     print(f"  Price days:     {len(price_df) if price_df is not None else 0}")

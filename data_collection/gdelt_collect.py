@@ -26,9 +26,9 @@ class GDELTCollector:
 
     TIMEOUT = 30                        # DEFault request timeout allowed
 
-    REQUEST_DELAY = 5.0                 # TIME BETWEEN requests, limits API intensity
+    REQUEST_DELAY = 10.0                 # TIME BETWEEN requests, limits API intensity
 
-    MULTIPLE_DAYS_REQUEST_DELAY = 6.0     # gdelt API recommends at least 5 seconds inbetween API calls to rate limit
+    MULTIPLE_DAYS_REQUEST_DELAY = 15.0     # gdelt API recommends at least 5 seconds, using 10 for safety with large runs
 
     def __init__(self, timeout : int = 30):
         
@@ -125,10 +125,10 @@ class GDELTCollector:
 
                 # handle rate limiting with retries
                 retries = 0
-                while response.status_code == 429 and retries < 3:
+                while response.status_code == 429 and retries < 5:
                     retries += 1
-                    wait_time = 10 * retries
-                    print(f"  Rate limited by GDELT. Retry {retries}/3, waiting {wait_time}s...")
+                    wait_time = 15 * retries          # 15, 30, 45, 60, 75 seconds
+                    print(f"  Rate limited by GDELT. Retry {retries}/5, waiting {wait_time}s...")
                     time.sleep(wait_time)
                     response = requests.get(self.GDELT_URL, params=parameters, timeout=self.TIMEOUT)
 
@@ -147,7 +147,7 @@ class GDELTCollector:
 
                 response_data = response.json()                         # convert to json for extracting articles
 
-                # GDELT returns articles in ['articles'] key
+                # GDELT returns articles in ['articles'] key so
                 if 'articles' in response_data:
                     # if articles exists, convert to NewsArticle Objects
                     for article in response_data['articles']:
@@ -255,8 +255,15 @@ class GDELTCollector:
             # delay between requests as long as it isnt the last iteration
             if day_offset < days_backwards - 1:                 # add sleep unless its last iteration
 
-                print(f"Waiting {delay_between_days} seconds before next call...")
-                time.sleep(delay_between_days)              # 6 second delay for API rate limiting
+                # if we got 0 articles, GDELT probably rate limited us
+                # wait longer before the next request to let the rate limit cool down
+                if len(daily_articles) == 0:
+                    cooldown = 60
+                    print(f"  Got 0 articles - cooling down for {cooldown}s before next request...")
+                    time.sleep(cooldown)
+                else:
+                    print(f"Waiting {delay_between_days} seconds before next call...")
+                    time.sleep(delay_between_days)              # normal delay for API rate limiting
 
 
         # after loop, return all articles

@@ -8,7 +8,7 @@ import json
 import hashlib
 import time
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, TimeoutError
 from typing import List, Optional, Dict
 from data_collection.models import NewsArticle
 
@@ -21,12 +21,15 @@ except ImportError:
 
 
 class ContentScraper:
-    """Scrapes full article text from URLs with caching and concurrency."""
+    #Scrapes full article text from URLs with caching and concurrency
+    
 
     def __init__(self, cache_dir: str = "data/cache/articles",
                  max_threads: int = 10,
                  timeout: int = 15,
                  delay_between_requests: float = 0.2):
+        
+        #desc
         """
         Args:
             cache_dir: Directory to store cached_url article content
@@ -60,7 +63,8 @@ class ContentScraper:
         return None
 
     def save_to_cache(self, url: str, content: Optional[str]):
-        """Save article content to disk cache."""
+        
+        # saves article content to disk
         cache_path = os.path.join(self.cache_dir, f"{self.url_to_cache_key(url)}.json")
         try:
             with open(cache_path, 'w', encoding='utf-8') as f:
@@ -73,14 +77,7 @@ class ContentScraper:
             print(f"  Cache write error: {e}")
 
     def scrape_single_article(self, url: str) -> Optional[str]:
-        """Fetch and extract article body text from a single URL.
-        
-        Args:
-            url: Article URL to scrape
-            
-        Returns:
-            Extracted article text, or None if extraction fails
-        """
+
         if not trafilatura:
             print("Unable to find trafilatura installation.")
             return None
@@ -117,18 +114,9 @@ class ContentScraper:
 
     def scrape_articles(self, articles: List[NewsArticle],
                          show_progress: bool = True) -> List[NewsArticle]:
-        """Scrape content for a list of articles using concurrent fetching.
-        
-        Modifies articles in-place by populating the `content` field.
-        Articles that fail scraping retain content=None (title-only fallback).
-        
-        Args:
-            articles: List of NewsArticle objects to scrape
-            show_progress: Whether to print progress updates
-            
-        Returns:
-            The same list of articles with content fields populated where possible
-        """
+
+        # article body scraper for url in lsit of news articles
+
         if not trafilatura:
             print("Unable to find trafilatura installation - skipping the content scraping")
             print("For Sentiment analysis will use titles only (valid for VADER)")
@@ -157,20 +145,34 @@ class ContentScraper:
 
         unique_urls = list(url_to_indices.keys())
 
-        # used for concurrent fetching
-        with ThreadPoolExecutor(max_workers=self.max_threads) as executor:              # threaadpoolexecutor must use max_workers for param, bug fix
-            future_to_url = {
-                executor.submit(self.scrape_single_article, url): url
-                for url in unique_urls
-            }
+        # create executor WITHOUT context manager so we can shutdown without waiting for stuck threads
+        executor = ThreadPoolExecutor(max_workers=self.max_threads)
+        future_to_url = {
+            executor.submit(self.scrape_single_article, url): url
+            for url in unique_urls
+        }
 
-            completed = 0
-            for future in as_completed(future_to_url):
-                url = future_to_url[future]
+        completed = 0
+        stall_timeout = 60      # if nothing completes for 1 minute, the rest are stuck
+        remaining = dict(future_to_url)
+
+        while remaining:
+            # wait for the NEXT future to finish, up to 1 minute
+            done, not_done = wait(remaining.keys(), timeout=stall_timeout, return_when=FIRST_COMPLETED)
+
+            if not done:
+                # nothing completed in 1 minute - skip whatever is stuck
+                stuck = len(not_done)
+                failed_count += stuck
+                print(f"  {stuck} URLs timed out after {stall_timeout}s - skipping")
+                break
+
+            for future in done:
+                url = remaining.pop(future)
                 completed += 1
 
                 try:
-                    content = future.result()
+                    content = future.result(timeout=self.timeout)
 
                     # assign content to all articles with this URL
                     for idx in url_to_indices[url]:
@@ -181,12 +183,19 @@ class ContentScraper:
                     else:
                         failed_count += 1
 
+                except TimeoutError:
+                    failed_count += 1
+                    print(f"  Timeout on {url[:60]}... - skipping")
+
                 except Exception as e:
                     failed_count += 1
 
                 # progress update every 50 articles
                 if show_progress and completed % 50 == 0:
                     print(f"  Progress: {completed}/{len(unique_urls)} URLs processed")
+
+        # shutdown without waiting for stuck threads - this is the key fix
+        executor.shutdown(wait=False)
 
         if show_progress:
             print(f"  Scraping complete: {success_count} succeeded, {failed_count} failed")

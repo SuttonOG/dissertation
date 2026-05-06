@@ -23,40 +23,43 @@ plt.rcParams.update({
 
 
 def plot_sentiment_over_time(df: pd.DataFrame, ticker: str = "",
-                              output_dir: str = "output/charts"):
+                              output_dir: str = "output/charts",
+                              sentiment: str = "vader"):
     
     # plot daily avg sentiment over time
-    # show general trend of positive / mehgative news over time
-    # 
-
+    # show general trend of positive / negative news over time
 
     os.makedirs(output_dir, exist_ok=True)
+
+    # pick the right column based on scorer
+    sent_col = f'{sentiment}_mean'
+    if sent_col not in df.columns:
+        print(f"  skipping sentiment over time - no {sent_col} column")
+        return None
 
     fig, ax = plt.subplots(figsize=(14, 6))
 
     dates = pd.to_datetime(df['published_day'])
-    sentiment = df['vader_mean']
+    sentiment_vals = df[sent_col]
 
 
 
     # plot the line
-    ax.plot(dates, sentiment, color='#2196F3', linewidth=1.5, marker='o',
+    ax.plot(dates, sentiment_vals, color='#2196F3', linewidth=1.5, marker='o',
             markersize=4, label='Daily mean sentiment', zorder=3)
 
-
-
     # fill above/below zero to make it visually obvious whats positive vs negative
-    ax.fill_between(dates, sentiment, 0,
-                    where=(sentiment >= 0), color='#4CAF50', alpha=0.15, label='Positive')
-    ax.fill_between(dates, sentiment, 0,
-                    where=(sentiment < 0), color='#F44336', alpha=0.15, label='Negative')
+    ax.fill_between(dates, sentiment_vals, 0,
+                    where=(sentiment_vals >= 0), color='#4CAF50', alpha=0.15, label='Positive')
+    ax.fill_between(dates, sentiment_vals, 0,
+                    where=(sentiment_vals < 0), color='#F44336', alpha=0.15, label='Negative')
 
 
     # zero line for reference
     ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
 
     ax.set_xlabel('Date')
-    ax.set_ylabel('Mean VADER Compound Score')
+    ax.set_ylabel(f'Mean {sentiment.upper()} Compound Score')
     ax.set_title(f'Daily News Sentiment Over Time{" - " + ticker if ticker else ""}')
     ax.legend(loc='upper right')
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
@@ -71,16 +74,22 @@ def plot_sentiment_over_time(df: pd.DataFrame, ticker: str = "",
 
 
 def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
-                               output_dir: str = "output/charts"):
+                               output_dir: str = "output/charts",
+                               sentiment: str = "vader"):
     
-    # scatter plot of senrtiment vs next-day stock returns
-    # key relationship for investigation, if correlation -> main finding
+    # scatter plot of sentiment vs next-day stock returns
+    # key relationship for investigation
 
     os.makedirs(output_dir, exist_ok=True)
 
+    sent_col = f'{sentiment}_mean'
+    if sent_col not in df.columns:
+        print(f"  skipping sentiment vs returns - no {sent_col} column")
+        return None
+
     fig, ax = plt.subplots(figsize=(10, 8))
 
-    x = df['vader_mean']
+    x = df[sent_col]
     y = df['daily_return']
 
     # colour points by whether return was positive or negative
@@ -110,7 +119,7 @@ def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
 
 
 
-    ax.set_xlabel('Mean Daily Sentiment (VADER)')
+    ax.set_xlabel(f'Mean Daily Sentiment ({sentiment.upper()})')
     ax.set_ylabel('Daily Stock Return')
     ax.set_title(f'Sentiment vs Daily Returns{" - " + ticker if ticker else ""}')
     ax.legend()
@@ -126,19 +135,23 @@ def plot_sentiment_vs_returns(df: pd.DataFrame, ticker: str = "",
 
 
 def plot_cluster_scatter(df: pd.DataFrame, ticker: str = "",
-                          output_dir: str = "output/charts"):
+                          output_dir: str = "output/charts",
+                          sentiment: str = "vader"):
     
     # scatter plot to show clusters - colour coded by cluster label 
-    # x axis = sentiment, y azis = returns
-    # main visual to show clustering findings 
+    # x axis = sentiment, y axis = returns
     # noise points = cluster -1 (grey)
-   
 
     os.makedirs(output_dir, exist_ok=True)
-    
+
+    sent_col = f'{sentiment}_mean'
 
     if 'cluster_label' not in df.columns:
         print("  skipping cluster scatter - no cluster_label column found")
+        return None
+
+    if sent_col not in df.columns:
+        print(f"  skipping cluster scatter - no {sent_col} column")
         return None
 
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -149,16 +162,15 @@ def plot_cluster_scatter(df: pd.DataFrame, ticker: str = "",
 
     # plot noise points first (behind everything)
     if not noise.empty:
-        ax.scatter(noise['vader_mean'], noise['daily_return'],
+        ax.scatter(noise[sent_col], noise['daily_return'],
                    c='lightgray', alpha=0.4, s=30, label='Noise', zorder=1)
 
     # plot each cluster with a different colour
-    # using a nice colour palette that works for up to ~10 clusters
     palette = sns.color_palette("deep", n_colors=max(clustered['cluster_label'].nunique(), 1))
 
     for i, label in enumerate(sorted(clustered['cluster_label'].unique())):
         cluster = clustered[clustered['cluster_label'] == label]
-        ax.scatter(cluster['vader_mean'], cluster['daily_return'],
+        ax.scatter(cluster[sent_col], cluster['daily_return'],
                    c=[palette[i % len(palette)]], s=70, alpha=0.7,
                    edgecolors='white', linewidth=0.5,
                    label=f'Cluster {label} (n={len(cluster)})', zorder=2)
@@ -166,7 +178,7 @@ def plot_cluster_scatter(df: pd.DataFrame, ticker: str = "",
     ax.axhline(y=0, color='gray', linestyle=':', linewidth=0.8)
     ax.axvline(x=0, color='gray', linestyle=':', linewidth=0.8)
 
-    ax.set_xlabel('Mean Daily Sentiment (VADER)')
+    ax.set_xlabel(f'Mean Daily Sentiment ({sentiment.upper()})')
     ax.set_ylabel('Daily Stock Return')
     ax.set_title(f'Sentiment Clusters{" - " + ticker if ticker else ""}')
     ax.legend(loc='best')
@@ -181,10 +193,11 @@ def plot_cluster_scatter(df: pd.DataFrame, ticker: str = "",
 
 
 def plot_cluster_profiles(df: pd.DataFrame, ticker: str = "",
-                           output_dir: str = "output/charts"):
+                           output_dir: str = "output/charts",
+                           sentiment: str = "vader"):
     
-    # bar chart comparing key metrics across clusters 
-    # makes easy to see what a clusters characteristics are e.g cluster 0 = positive sentiment + low vow, cluster 1 = negative + high vol
+    # bar chart comparing key metrics across clusters
+    # shows what each cluster looks like
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -192,15 +205,15 @@ def plot_cluster_profiles(df: pd.DataFrame, ticker: str = "",
         print("  skipping cluster profiles - no cluster_label column found")
         return None
 
-
     # only use actual clusters, not noise
     clustered = df[df['cluster_label'] >= 0]
     if clustered.empty:
         print("  no clusters to profile")
         return None
 
-    # metrics to compare across clusters
-    metrics = ['vader_mean', 'daily_return', 'realised_volatility_5d', 'positive_ratio']
+    # metrics to compare - pick sentiment column based on scorer
+    sent_col = f'{sentiment}_mean'
+    metrics = [sent_col, 'daily_return', 'realised_volatility_5d', 'positive_ratio']
     available = [m for m in metrics if m in clustered.columns]
 
     if not available:
@@ -209,7 +222,8 @@ def plot_cluster_profiles(df: pd.DataFrame, ticker: str = "",
 
     # nicer labels for the chart
     labels = {
-        'vader_mean': 'Avg Sentiment',
+        'vader_mean': 'Avg Sentiment (VADER)',
+        'finbert_mean': 'Avg Sentiment (FinBERT)',
         'daily_return': 'Avg Return',
         'realised_volatility_5d': 'Avg Volatility (5d)',
         'positive_ratio': 'Positive Article Ratio',
@@ -245,28 +259,28 @@ def plot_cluster_profiles(df: pd.DataFrame, ticker: str = "",
 
 
 def plot_sentiment_distribution(articles_df: pd.DataFrame, ticker: str = "",
-                                 output_dir: str = "output/charts"):
+                                 output_dir: str = "output/charts",
+                                 sentiment: str = "vader"):
     
     # histogram of individual article sentiment scores
-    # shows overall distribution -> most tends to be positive for financial news
-    # good for methodol sect
 
     os.makedirs(output_dir, exist_ok=True)
 
-    if 'vader_compound' not in articles_df.columns:
-        print("  skipping sentiment distribution - no vader_compound column")
+    compound_col = f'{sentiment}_compound'
+    if compound_col not in articles_df.columns:
+        print(f"  skipping sentiment distribution - no {compound_col} column")
         return None
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    scores = articles_df['vader_compound'].dropna()
+    scores = articles_df[compound_col].dropna()
 
     ax.hist(scores, bins=40, color='#2196F3', alpha=0.7, edgecolor='white')
     ax.axvline(x=scores.mean(), color='#F44336', linestyle='--', linewidth=2,
                label=f'Mean = {scores.mean():.3f}')
     ax.axvline(x=0, color='gray', linestyle=':', linewidth=1)
 
-    ax.set_xlabel('VADER Compound Score')
+    ax.set_xlabel(f'{sentiment.upper()} Compound Score')
     ax.set_ylabel('Number of Articles')
     ax.set_title(f'Distribution of Article Sentiment Scores{" - " + ticker if ticker else ""}')
     ax.legend()
@@ -282,10 +296,10 @@ def plot_sentiment_distribution(articles_df: pd.DataFrame, ticker: str = "",
 def generate_all_charts(feature_matrix: pd.DataFrame,
                         articles_df: Optional[pd.DataFrame] = None,
                         ticker: str = "",
-                        output_dir: str = "output/charts"):
+                        output_dir: str = "output/charts",
+                        sentiment: str = "vader"):
     
-    # func to generate all charts at once 
-
+    # generate all charts at once
 
     print(f"\n{'=' * 50}")
     print("GENERATING VISUALISATIONS")
@@ -294,32 +308,35 @@ def generate_all_charts(feature_matrix: pd.DataFrame,
     os.makedirs(output_dir, exist_ok=True)
     generated = []
 
-    # 1. sentiment over time (needs the aggregated daily data)
-    if 'published_day' in feature_matrix.columns and 'vader_mean' in feature_matrix.columns:
-        path = plot_sentiment_over_time(feature_matrix, ticker, output_dir)
+    sent_col = f'{sentiment}_mean'
+    compound_col = f'{sentiment}_compound'
+
+    # 1. sentiment over time
+    if 'published_day' in feature_matrix.columns and sent_col in feature_matrix.columns:
+        path = plot_sentiment_over_time(feature_matrix, ticker, output_dir, sentiment)
         if path:
             generated.append(path)
 
-    # 2. sentiment vs returns ( key relationship)
-    if 'vader_mean' in feature_matrix.columns and 'daily_return' in feature_matrix.columns:
-        path = plot_sentiment_vs_returns(feature_matrix, ticker, output_dir)
+    # 2. sentiment vs returns
+    if sent_col in feature_matrix.columns and 'daily_return' in feature_matrix.columns:
+        path = plot_sentiment_vs_returns(feature_matrix, ticker, output_dir, sentiment)
         if path:
             generated.append(path)
 
     # 3. cluster scatter (if clustering has been done)
     if 'cluster_label' in feature_matrix.columns:
-        path = plot_cluster_scatter(feature_matrix, ticker, output_dir)
+        path = plot_cluster_scatter(feature_matrix, ticker, output_dir, sentiment)
         if path:
             generated.append(path)
 
         # 4. cluster profiles
-        path = plot_cluster_profiles(feature_matrix, ticker, output_dir)
+        path = plot_cluster_profiles(feature_matrix, ticker, output_dir, sentiment)
         if path:
             generated.append(path)
 
-    # 5. article-level sentiment distribution (if we have individual articles)
-    if articles_df is not None and 'vader_compound' in articles_df.columns:
-        path = plot_sentiment_distribution(articles_df, ticker, output_dir)
+    # 5. article-level sentiment distribution
+    if articles_df is not None and compound_col in articles_df.columns:
+        path = plot_sentiment_distribution(articles_df, ticker, output_dir, sentiment)
         if path:
             generated.append(path)
 
